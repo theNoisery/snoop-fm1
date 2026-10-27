@@ -1,0 +1,46 @@
+# SNOOP: build the FM-1 firmware in the cloud on every push and attach the .fwsc as a download.
+name: build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  firmware:
+    runs-on: ubuntu-22.04          # Linux x86-64: the JieLi toolchain runs natively, no Docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install Pillow
+      - name: JieLi toolchain (cached)
+        id: tc
+        uses: actions/cache@v4
+        with: { path: ~/.jieli, key: jieli-toolchain-v1 }
+      - if: steps.tc.outputs.cache-hit != 'true'
+        run: sh tools/get_toolchain.sh
+      - name: AC79 SDK, the three files the package needs (cached)
+        id: sdk
+        uses: actions/cache@v4
+        with: { path: ~/fw-AC79_AIoT_SDK, key: ac79-sdk-v1.2.1 }
+      - if: steps.sdk.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+            https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK
+          git -C ~/fw-AC79_AIoT_SDK sparse-checkout set cpu/wl82/tools
+      - name: Build
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          sh build.sh 2>&1 | tee build/log.txt
+      - name: Host tests (audio renders, sequencer, storage...)
+        run: sh tests/run_tests.sh
+        continue-on-error: true    # report, but still hand over the firmware
+      - name: Name the package
+        run: cp build/felucca.fwsc "build/snoop-$(git rev-parse --short HEAD).fwsc"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snoop-firmware
+          path: |
+            build/snoop-*.fwsc
+            build/log.txt
