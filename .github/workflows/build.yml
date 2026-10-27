@@ -34,8 +34,17 @@ jobs:
           mkdir -p build
           sh build.sh 2>&1 | tee build/log.txt
       - name: Host tests (audio renders, sequencer, storage...)
-        run: sh tests/run_tests.sh
+        shell: bash
+        run: |
+          set -o pipefail
+          sh tests/run_tests.sh 2>&1 | tee build/tests.txt
         continue-on-error: true    # report, but still hand over the firmware
+      - name: Sizes and test results as notes on the run (readable without the logs)
+        if: always()
+        shell: bash
+        run: |
+          grep -E "^app |flash is full|RAM|pool|lowram|  FAIL " build/log.txt | head -12 | while read -r l; do echo "::notice title=build::$l"; done
+          grep -E "^regress: [0-9]+ golden|[1-9][0-9]* failed|FAIL" build/tests.txt | head -12 | while read -r l; do echo "::notice title=tests::$l"; done || true
       - name: Name the package
         run: cp build/felucca.fwsc "build/snoop-$(git rev-parse --short HEAD).fwsc"
       - uses: actions/upload-artifact@v4
