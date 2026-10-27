@@ -24,7 +24,7 @@ UI_SMALL static void song_screen_draw(void)
     const uint16_t *SC = TE_COL;                    /* the tracks' colours (2.7.2: your theme's, when it is on) */
     uint32_t sig = song_cursor + 17u * arrangement_enabled + 37u * song.playing +
                    71u * arrangement_clock.index + 127u * arrangement_clock.bar +
-                   257u * arrangement.count + 509u * song.g[G_BPM];
+                   257u * arrangement.count + 509u * song.g[G_BPM] + 1021u * ARR_SYNC_LOOP(&arrangement);
     char b[30];
     for (i = 0; i < arrangement.count; i++)
         sig = sig * 31u + arrangement.entry[i].scene + 7u * arrangement.entry[i].bars;
@@ -35,6 +35,8 @@ UI_SMALL static void song_screen_draw(void)
     cv_begin(240, 40, C_BLACK);
     cv_text(4, 4, &FONT_L, "SONG", C_WHITE);
     cv_text(76, 20, &FONT_S, arrangement_enabled ? "song mode" : "loop mode", arrangement_enabled ? SC[3] : TE_G3);
+    cv_text(76, 4, &FONT_S, ARR_SYNC_LOOP(&arrangement) ? "sync loop" : "sync bar",   /* (SNOOP) PRESETS */
+            ARR_SYNC_LOOP(&arrangement) ? SC[2] : TE_G3);
     fmt_int(b, song.g[G_BPM]);
     cv_text(236 - text_w(&FONT_S, b) - 28, 4, &FONT_S, b, C_WHITE);
     cv_text(236 - 24, 4, &FONT_S, "bpm", TE_G3);
@@ -58,7 +60,8 @@ UI_SMALL static void song_screen_draw(void)
             w = e->bars * 120 / 64 + 4;                 /* its length as a bar */
             cv_rect(60, 9, w, 8, used ? (selected ? sc : TE_G2) : TE_G1);
             fmt_int(b, e->bars);
-            str_cpy(b + str_len(b), e->bars == 1 ? " bar" : " bars", 8);
+            str_cpy(b + str_len(b), ARR_SYNC_LOOP(&arrangement) ? (e->bars == 1 ? " loop" : " loops")   /* (SNOOP) */
+                                                               : (e->bars == 1 ? " bar" : " bars"), 8);
             cv_text(60 + w + 6, 5, &FONT_S, used ? b : "empty", selected ? C_WHITE : TE_G3);
             if (arrangement_clock.running && arrangement_clock.index == pos) {
                 cv_rect(60, 19, (int32_t)(arrangement_clock.bar + 1u) * w / (e->bars ? e->bars : 1), 2, C_WHITE);
@@ -73,7 +76,7 @@ UI_SMALL static void song_screen_draw(void)
         cv_rect(0, 4, 240, 30, C_WHITE);
         cv_text((240 - text_w(&FONT_S, ui.msg)) / 2, 11, &FONT_S, ui.msg, C_BLACK);
     } else {
-        static const char *const L[4] = {"entry", "section", "bars", "length"};
+        const char *const L[4] = {"entry", "section", ARR_SYNC_LOOP(&arrangement) ? "loops" : "bars", "length"};
         for (i = 0; i < 4u; i++) {
             cv_rect((int32_t)i * 60 + 4, 6, 52, 3, SC[i]);
             cv_text((int32_t)i * 60 + 30 - text_w(&FONT_S, L[i]) / 2, 12, &FONT_S, L[i], TE_G3);
@@ -149,6 +152,15 @@ UI_SMALL static void song_screen_input(uint32_t pressed, uint32_t home)
             if (song_cursor >= arrangement.count) song_cursor = arrangement.count - 1;
         }
     }
+    /* (SNOOP) PRESETS: SYNC BAR / LOOP, kept with the song (SAVE); not while the song plays (its lengths are set) */
+    if ((steps = panel_enc(EN_PRESET)) != 0) {
+        if (arrangement_clock.running) {
+            ui_message("STOP FIRST");
+        } else {
+            arrangement.reserved[0] = (uint8_t)(steps > 0);
+            ui_message(steps > 0 ? "SYNC LOOP: PATTERN END" : "SYNC BAR");
+        }
+    }
     /* Unused encoders have no hidden action on this screen. */
-    panel_enc(EN_SELECT); panel_enc(EN_ALGO); panel_enc(EN_PRESET);
+    panel_enc(EN_SELECT); panel_enc(EN_ALGO);
 }

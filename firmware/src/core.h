@@ -362,6 +362,11 @@ static uint32_t div_units(uint32_t div)
 {
     return div < NDIV_SHORT ? BEAT_U / DIV_DEN[div] : BEAT_U * DIV_BEATS[(div - NDIV_SHORT) % 3u];
 }
+/* (SNOOP) a pattern's length in clock units: steps (1..NSTEP) x their division (64 x 8 beats fits 32 bits) */
+static uint32_t pattern_units(uint32_t slen, uint32_t sdiv)
+{
+    return (slen < 1u ? 1u : slen > NSTEP ? NSTEP : slen) * div_units(sdiv % NDIV_STEP);
+}
 /* the delay's TIME in clock units (N_DLY order) */
 static uint32_t dly_units(uint32_t d)
 {

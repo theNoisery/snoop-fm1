@@ -456,7 +456,7 @@ UI_SMALL static void chain_release(void)
         for (i = 0; i < chain_taps && i < CHAIN_MAX; i++)
             chain_sec[i] = chain_tap[i];
         chain_i = 0;
-        chain_bars = (uint8_t)section_bars(chain_tap[0]);   /* (the first plays already, or is asked for) */
+        chain_bars = (uint8_t)(ARR_SYNC_LOOP(&arrangement) ? 1u : section_bars(chain_tap[0]));   /* (the first plays already, or is asked for; SNOOP: SYNC LOOP, one play) */
         chain_n = (uint8_t)(chain_taps < CHAIN_MAX ? chain_taps : CHAIN_MAX);
         fm1_irq_on();
     }

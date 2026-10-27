@@ -113,6 +113,45 @@ int main(int argc, char **argv)
                arrangement.entry[1].scene == 1 && arrangement.entry[1].bars == 3u);
         printf("song live: B on the bar (%u), SONG REC -> A 2 bars, B 3 bars PASS\n", jumped);
     }
+    {   /* SNOOP: SYNC LOOP. A's drums 20 steps of 1/16 (a 5/4 bar), the synths 16: the longest pattern is 5 beats.
+         * LIVE: B asked for in A's first beat starts when A's 20 steps end, not on the bar (4 beats). SONG: A x 2 loops,
+         * then B (16 steps: 4 beats) x 1: B at 10 beats, the end at 14. */
+        uint32_t bpm = (uint32_t)song.g[G_BPM], t, jumped = 0, at_b = 0, at_end = 0;
+        uint32_t five = (5u * BEAT_U + bpm - 1u) / bpm, ten = (10u * BEAT_U + bpm - 1u) / bpm,
+                 fourteen = (14u * BEAT_U + bpm - 1u) / bpm;
+        arrangement_enabled = 0;
+        proj_apply(&proj_slot[0], 1);
+        TDRUM->p[P_SLEN] = 20;
+        capture(0);
+        arrangement.reserved[0] = 1;            /* SYNC LOOP */
+        live_sec = 0;
+        transport_req = 1;
+        for (t = 0; t < 3u * five; t += CTL) {
+            if (t >= CTL * 4u && t < CTL * 5u) live_req = 1;
+            mix_block(out, CTL);
+            if (live_sec == 1 && !jumped) jumped = t;
+        }
+        transport_req = 2;
+        mix_block(out, CTL);
+        assert(jumped >= five && jumped < five + CTL);
+        printf("sync loop live: B after A's 20 steps (%u, a bar would be %u) PASS\n", jumped, (4u * BEAT_U) / bpm);
+        arrangement.count = 2;
+        arrangement.loop = 0;
+        arrangement.entry[0] = (arr_entry_t){0, 2};
+        arrangement.entry[1] = (arr_entry_t){1, 1};
+        arrangement_enabled = 1;
+        transport_req = 1;
+        for (t = 0; t < fourteen + 8u * CTL; t += CTL) {
+            mix_block(out, CTL);
+            if (song.playing && arrangement_clock.index == 1u && !at_b) at_b = t;
+            if (!song.playing && t && !at_end) at_end = t;
+        }
+        assert(at_b >= ten && at_b < ten + CTL);
+        assert(at_end >= fourteen && at_end < fourteen + CTL);
+        arrangement.reserved[0] = 0;
+        arrangement_enabled = 0;
+        printf("sync loop song: A x 2 loops then B at %u, end at %u PASS\n", at_b, at_end);
+    }
     printf("song audio: 3 synth parts + drums, section at %u, stop at %u, no held sequencer notes PASS\n",at_change,at_stop);
     return 0;
 }

@@ -4285,7 +4285,7 @@ const ARR = {
   /* the settings bytes with this song order (the rest kept as it was) */
   encode(b, song) {
     const o = Uint8Array.from(b), e = song.entries;
-    o[ARR.OFF] = e.length; o[ARR.OFF + 1] = song.loop ? 1 : 0; o[ARR.OFF + 2] = o[ARR.OFF + 3] = 0;
+    o[ARR.OFF] = e.length; o[ARR.OFF + 1] = song.loop ? 1 : 0; o[ARR.OFF + 3] = 0;   /* (SNOOP: byte 2, SYNC BAR / LOOP, kept) */
     for (let i = 0; i < ARR.STEPS; i++) {
       o[ARR.OFF + 4 + 2 * i] = i < e.length ? e[i].scene : i % 4;
       o[ARR.OFF + 5 + 2 * i] = i < e.length ? e[i].bars : 4;

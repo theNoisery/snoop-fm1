@@ -18,7 +18,12 @@ typedef struct {
 typedef struct {
     uint32_t phase;
     uint8_t running, index, bar, error;
+    uint32_t unit[ARR_SCENES];   /* (SNOOP) the length of one "bar" of each scene in clock units; 0: a 4/4 bar */
 } arr_clock_t;
+/* (SNOOP) SYNC on the SONG screen, kept in the song's spare byte (older firmware ignores it): 0 BAR, sections change
+ * on the bar and a song step lasts N bars, as SLOOP; 1 LOOP, they change when the section's longest pattern ends and
+ * a song step lasts N plays of it (5/4, 7/8, 20 steps...) */
+#define ARR_SYNC_LOOP(c) ((c)->reserved[0] & 1u)
 
 static void arr_defaults(arr_config_t *c)
 {
@@ -42,7 +47,9 @@ static int arr_valid(const arr_config_t *c, uint32_t ready)
 }
 static int arr_begin(arr_clock_t *r, const arr_config_t *c, uint32_t ready)
 {
+    uint32_t i;
     r->phase = 0; r->index = 0; r->bar = 0; r->running = 0;
+    for (i = 0; i < ARR_SCENES; i++) r->unit[i] = 0;    /* (the caller sets them after, for SYNC LOOP) */
     r->error = (uint8_t)!arr_valid(c, ready);
     if (r->error) return ARR_INVALID;
     r->running = 1;
@@ -51,9 +58,12 @@ static int arr_begin(arr_clock_t *r, const arr_config_t *c, uint32_t ready)
 static int arr_next(arr_clock_t *r, const arr_config_t *c, uint32_t sample_rate)
 {
     int result = ARR_NONE;
-    uint32_t period = sample_rate * 240u;
-    if (!r->running || !period) return ARR_NONE;
-    while (r->phase >= period) {
+    uint32_t bar = sample_rate * 240u, period;
+    if (!r->running || !bar) return ARR_NONE;
+    for (;;) {
+        period = r->unit[c->entry[r->index].scene % ARR_SCENES];
+        if (!period) period = bar;
+        if (r->phase < period) break;
         r->phase -= period;
         if (++r->bar < c->entry[r->index].bars) continue;
         r->bar = 0;

@@ -2460,6 +2460,19 @@ static void click_tick(void)
 static volatile int8_t live_req = -1;              /* section asked for (UI), applied on the next bar */
 static volatile int8_t live_sec = -1;              /* the section playing: last jumped to, loaded or stored */
 static uint32_t live_bar = 0xFFFFFFFFu;            /* clk_beat / 4 of the last bar seen (= bars the section played) */
+/* (SNOOP) SYNC LOOP (the SONG screen, ARR_SYNC_LOOP): the boundary is the end of the longest pattern playing, not the
+ * bar; live_bar then counts those loops */
+static uint32_t live_u;                            /* clock units since the last loop boundary */
+static uint32_t live_loops;                        /* whole loops the section has played */
+static uint8_t live_new = 1;                       /* the section (or PLAY) just began: its first boundary */
+static uint32_t live_cycle(void)                   /* the longest pattern of the tracks playing, in clock units */
+{
+    uint32_t k, u, cyc = 0;
+    for (k = 0; k < NTRK; k++)
+        if ((u = pattern_units((uint32_t)trk[k].p[P_SLEN], (uint32_t)trk[k].p[P_SDIV])) > cyc)
+            cyc = u;
+    return cyc ? cyc : 4u * BEAT_U;
+}
 /* QUICK CHAIN (SAVE held, two or more section keys tapped): the sections in order, looped, each for the bars its
  * longest pattern takes (section_bars); the UI writes it whole with the IRQ off, chain_n last (0 = none) */
 #define CHAIN_MAX 8u
@@ -2502,7 +2515,8 @@ static void srec_add(uint32_t s)
 static void srec_stop(void)
 {
     if (srec == 2u && srec_n && srec_e[srec_n - 1u].bars < 64u &&
-        ((!(clk_beat & 3u) && (clk_beat >> 2) != live_bar) || (clk_beat & 3u)))
+        (ARR_SYNC_LOOP(&arrangement) ? live_u != 0u :            /* (SNOOP: a loop that had begun) */
+         ((!(clk_beat & 3u) && (clk_beat >> 2) != live_bar) || (clk_beat & 3u))))
         srec_e[srec_n - 1u].bars++;
     if (srec == 2u)
         srec_finish();
@@ -2511,9 +2525,27 @@ static void srec_stop(void)
 static void seq_reset_tracks(uint32_t pos);
 static void live_block(void)                       /* once a block while playing a loop (not the song) */
 {
-    if ((clk_beat & 3u) || (clk_beat >> 2) == live_bar)
-        return;
-    live_bar = clk_beat >> 2;                       /* a new bar */
+    uint32_t rem;                                   /* clock units past the boundary (the new section starts there) */
+    if (ARR_SYNC_LOOP(&arrangement)) {              /* (SNOOP) the end of the longest pattern */
+        uint32_t cyc = live_cycle();
+        if (live_new) {
+            live_new = 0;
+        } else if (live_u >= cyc) {
+            live_u -= cyc;
+            if (live_u >= cyc)                      /* (a pattern shortened while it played) */
+                live_u %= cyc;
+            live_loops++;
+        } else {
+            return;
+        }
+        live_bar = live_loops;
+        rem = live_u;
+    } else {
+        if ((clk_beat & 3u) || (clk_beat >> 2) == live_bar)
+            return;
+        live_bar = clk_beat >> 2;                   /* a new bar */
+        rem = clk_pos;
+    }
     if (srec == 2u && srec_n) {
         arr_entry_t *e = &srec_e[srec_n - 1u];
         if (e->bars < 64u) {
@@ -2535,10 +2567,11 @@ static void live_block(void)                       /* once a block while playing
             arrangement_apply(s);
             song.rec = 0;                           /* (a take does not run on into another section) */
             live_sec = (int8_t)s;
-            seq_reset_tracks(clk_pos);              /* on the bar: every track from its step 0 */
+            seq_reset_tracks(rem);                  /* on the bar (SNOOP: or the loop): every track from its step 0 */
             live_bar = 0;
-            if (chain_n)
-                chain_bars = (uint8_t)section_bars(chain_sec[chain_i % CHAIN_MAX]);
+            live_new = 0;
+            if (chain_n)                            /* (SNOOP: SYNC LOOP, one play of its longest pattern) */
+                chain_bars = (uint8_t)(ARR_SYNC_LOOP(&arrangement) ? 1u : section_bars(chain_sec[chain_i % CHAIN_MAX]));
             if (srec == 2u)
                 srec_add(s);
         }
@@ -2572,6 +2605,9 @@ static void seq_reset_tracks(uint32_t pos)
     clk_pos = pos;
 #if FELUCCA_ARRANGER
     live_bar = 0xFFFFFFFFu;                        /* (bar 0 is a new bar: SONG REC can start on it) */
+    live_u = pos;                                  /* (SNOOP) SYNC LOOP: the first loop starts here */
+    live_loops = 0;
+    live_new = 1;
 #endif
     fill_last_bar = 0xFFFFFFFFu;                   /* (the same for an armed fill bar) */
     click_last = SEQ_NONE;
@@ -3572,6 +3608,7 @@ static void events_block(uint32_t n)
         }
 #if FELUCCA_ARRANGER
         arr_elapse(&arrangement_clock, adv, 1u);   /* (units: n x BPM, or the MIDI clock) */
+        live_u += adv;                             /* (SNOOP) SYNC LOOP */
 #endif
     }
 }

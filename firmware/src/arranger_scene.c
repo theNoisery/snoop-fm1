@@ -25,6 +25,19 @@ static uint32_t section_bars(uint32_t s)
     return bars > 64u ? 64u : bars;
 }
 
+/* (SNOOP) the length of a stored section's longest pattern, in clock units (BEAT_U a beat) */
+static uint32_t section_cycle(uint32_t s)
+{
+    const project_t *p = &proj_slot[s & 3u];
+    uint32_t k, u, cyc = 0;
+    if (!proj_ok(p))
+        return 4u * BEAT_U;
+    for (k = 0; k < NTRK; k++)
+        if ((u = pattern_units((uint32_t)p->t[k].p[P_SLEN], (uint32_t)p->t[k].p[P_SDIV])) > cyc)
+            cyc = u;
+    return cyc;
+}
+
 /* Called only at an audio-block boundary, after validation of all slots at
  * start. The song keeps one tempo and global FX across every section (only the drum
  * level and reverb come from it). */
