@@ -7,6 +7,9 @@
 # SLOOP 2.4: FM6 (fm6_op_run, fm6_op_fb: the per-sample operator loops; fm6_render: the voice's output loop)
 # are in FUNCS without a budget yet: the engine was ported on a host without the pi32v2 toolchain; the
 # next ./build.sh + BUDGET_UPDATE=1 adds their lines (until then they print "no budget", not a failure).
+# SNOOP 0.9 (reviewed): drums_mix +11 % (0.8 STRETCH: each drum voice also feeds the LIVE capture, LIVD);
+# fm1_alnk0_irq +54 % (it inlines mix_block: 0.6 the hush around a flash write and the output's silence
+# measure, 0.8 the LIVE ring writer; per block of 32 samples, not per voice: callgrind's CPU check stays in budget).
 analog_render 638
 digital_render 333
 phase_render 79
@@ -20,5 +23,5 @@ drawbar_block 102
 grain_render 1734
 grain_block 138
 slicer_track 825
-drums_mix 6153
-fm1_alnk0_irq 174
+drums_mix 6825
+fm1_alnk0_irq 268
