@@ -556,7 +556,8 @@ UI_SMALL static void edit_param(uint32_t slot, int32_t steps)
     d = page_desc(pg, slot, &vp);
     if (!d || !vp || d->max == d->min)
         return;
-    v = d->names == ESYNC_NAMES || d->names == N_IBITS || d->names == N_IRATE ? names_turn(d, *vp, steps)   /* (a name a detent) */
+    v = d == &DRUM_KIT_DESC ? kit_step(*vp, steps)       /* (SNOOP: over the kits taken out) */
+      : d->names == ESYNC_NAMES || d->names == N_IBITS || d->names == N_IRATE ? names_turn(d, *vp, steps)   /* (a name a detent) */
                                     : clamp(*vp + accel(EN_K1 + slot, steps, d->names ? 0 : d->max - d->min), d->min, d->max);
     *vp = (int16_t)v;
     if (pg->scope != SC_GLOBAL && p_lockable(id))
@@ -1268,7 +1269,7 @@ UI_SMALL static void ui_input(void)
          * being edited. Every detent counts */
         uint32_t total, cur = preset_pos(&total);
         if (is_drum(TSEL))
-            TDRUM->p[P_E0] = (int16_t)clamp(TDRUM->p[P_E0] + s, 0, DRUM_KITS - 1);
+            TDRUM->p[P_E0] = kit_step(TDRUM->p[P_E0], s);   /* (SNOOP: over the kits taken out) */
         else if (total)
             preset_go((uint32_t)(((int32_t)cur + s % (int32_t)total + (int32_t)total) % (int32_t)total));
     }

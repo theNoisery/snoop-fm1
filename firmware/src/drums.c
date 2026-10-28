@@ -34,6 +34,21 @@ static const char *const DRUM_KIT_STYLES[] = {"STUDIO", "SOFT", "PUNCHY", "BRIGH
                                               "YOUR SYNTH", "YOUR SYNTH", "YOUR SYNTH", "YOUR SYNTH"};
 _Static_assert(sizeof(DRUM_KIT_NAMES) / sizeof(DRUM_KIT_NAMES[0]) == DRUM_KITS, "a name per kit");
 static uint32_t drum_kit(void) { return (uint32_t)clamp(TDRUM->p[P_E0], 0, DRUM_KITS - 1); }
+/* (SNOOP) a kit taken out (gen_drumkits.py REMOVED_KITS): its number stays, the knob steps over it */
+static int kit_gone(int32_t k) { return k >= (int32_t)DRUM_SAMPLED && k < (int32_t)DRUM_USR && ds_gone((uint32_t)k - DRUM_SAMPLED); }
+static int16_t kit_step(int32_t k, int32_t s)
+{
+    int32_t d = s > 0 ? 1 : -1, n = s < 0 ? -s : s, t;
+    k = clamp(k, 0, DRUM_KITS - 1);
+    while (n--) {
+        for (t = k + d; t >= 0 && t < (int32_t)DRUM_KITS && kit_gone(t); t += d)
+            ;
+        if (t < 0 || t >= (int32_t)DRUM_KITS)
+            break;
+        k = t;
+    }
+    return (int16_t)k;
+}
 #define DRUM_DEFAULT_KIT DRUM_SAMPLED   /* power-on: 808 */
 
 static struct {
@@ -316,7 +331,7 @@ static void drum_on(uint32_t note, uint32_t vel)
         if (zid < 0)
             return;                                 /* (an empty slot, or no sound on this lane) */
     } else if (kit >= DRUM_SAMPLED) {               /* synthesised kit */
-        drum_synth_on(note, vel, kit, DS_KITS[kit - DRUM_SAMPLED].s, DS_KITS[kit - DRUM_SAMPLED].crush, 1);
+        drum_synth_on(note, vel, kit, ds_kit(kit - DRUM_SAMPLED)->s, ds_kit(kit - DRUM_SAMPLED)->crush, 1);
         return;
     }
     if (zid < 0) {                                  /* the GM sample kit */

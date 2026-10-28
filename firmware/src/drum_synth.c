@@ -38,7 +38,14 @@ typedef struct {
     uint8_t crush;               /* low nibble: bits dropped, high nibble: sample-and-hold - 1 */
     dsnd_t s[DS_LANES];
 } dkit_t;
-#include "felucca_drumkits.h"    /* DS_KITS[], DS_NKITS (tools/gen_drumkits.py) */
+#include "felucca_drumkits.h"    /* DS_KITS_DATA[], DS_SLOT, DS_NKITS (tools/gen_drumkits.py) */
+/* (SNOOP) a KIT number's synthesised kit: a kit taken out plays the first (808) */
+static const dkit_t *ds_kit(uint32_t i)
+{
+    uint32_t m = DS_SLOT[i % DS_NKITS];
+    return &DS_KITS_DATA[m < DS_NDATA ? m : 0u];
+}
+#define ds_gone(i) (DS_SLOT[(i) % DS_NKITS] >= DS_NDATA)
 
 /* GM note -> synth lane and a pitch offset in semitones */
 static const struct { uint8_t lane; int8_t semi; } DS_MAP[128 - 35] = {
@@ -348,12 +355,12 @@ typedef struct {
 _Static_assert(sizeof(dsnd_t) == 22u && sizeof(dsu_kit_t) == 364u && sizeof(dsu_bank_t) == 1464u, "drum synth bank layout");
 static dsu_bank_t dsu;
 static volatile uint8_t dsu_dirty;                /* RAM differs from flash (an edit not stored yet) */
-static const uint8_t DSU_DEF[DSU_N] = {0, 1, 5, 12};   /* 808, 909, TRAP, TECHNO */
+static const uint8_t DSU_DEF[DSU_N] = {0, 1, 7, 12};   /* 808, 909, BOOMBAP, TECHNO (SNOOP: TRAP was taken out) */
 
 static void dsu_from_factory(uint32_t k, uint32_t src)
 {
     dsu_kit_t *u = &dsu.k[k % DSU_N];
-    const dkit_t *f = &DS_KITS[src % DS_NKITS];
+    const dkit_t *f = ds_kit(src);
     uint32_t i;
     memset(u, 0, sizeof *u);
     for (i = 0; i < 8u && f->name[i]; i++)

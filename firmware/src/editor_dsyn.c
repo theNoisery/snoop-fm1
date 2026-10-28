@@ -51,7 +51,7 @@ UI_SMALL static int ed_dsyn_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             return 0;
         ed_b(DS_NKITS); ed_b(DSU_N); ed_b(!dsu_dirty);
         for (i = 0; i < DS_NKITS; i++)
-            ed_str(DS_KITS[i].name, 8);
+            ed_str(ds_kit(i)->name, 8);
         for (i = 0; i < DSU_N; i++) {
             ed_dsyn_name(dsu.k[i].name);
             ed_b(dsu.k[i].src);
@@ -62,11 +62,11 @@ UI_SMALL static int ed_dsyn_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         uint32_t w = n == 1u ? a[0] : 127u, crush = 0, src = 0;
         char nm[8] = {0};
         if (w < DS_NKITS) {
-            s = DS_KITS[w].s;
-            crush = DS_KITS[w].crush;
+            s = ds_kit(w)->s;
+            crush = ds_kit(w)->crush;
             src = w;
-            for (i = 0; i < 8u && DS_KITS[w].name[i]; i++)
-                nm[i] = DS_KITS[w].name[i];
+            for (i = 0; i < 8u && ds_kit(w)->name[i]; i++)
+                nm[i] = ds_kit(w)->name[i];
         } else if (w >= ED_DSYN_USER && w < ED_DSYN_USER + DSU_N) {
             const dsu_kit_t *u = &dsu.k[w - ED_DSYN_USER];
             s = u->s;

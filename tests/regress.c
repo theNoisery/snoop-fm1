@@ -807,6 +807,13 @@ static job_t *add(uint32_t kind, const char *name)
     return j;
 }
 
+/* (SNOOP) the SAMPLE presets whose samples were taken out (tools/gen_samples.py REMOVED_SETS): no render */
+static int snoop_gone(uint32_t e, uint32_t pi)
+{
+    const char *n = ENGINES[e]->presets[pi].name;
+    return ENGINES[e] == &ENG_SAMPLE && (!strcmp(n, "UP BASS") || !strcmp(n, "DEEP BASS") || !strcmp(n, "SCRATCH"));
+}
+
 int main(int argc, char **argv)
 {
     const char *gpath = argc > 1 ? argv[1] : "tests/golden.txt";
@@ -834,6 +841,8 @@ int main(int argc, char **argv)
     for (e = 0; e < NENGINES; e++)
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
+            if (snoop_gone(e, pi))                      /* (SNOOP: their samples taken out, silent by design) */
+                continue;
             slug(s, ENGINES[e]->presets[pi].name, sizeof s);
             snprintf(name, sizeof name, "preset/%s/%02u_%s", ENGINES[e]->name, pi, s);
             j = add(J_PRESET, name);
@@ -890,6 +899,8 @@ int main(int argc, char **argv)
     for (e = 0; e < NENGINES; e++)
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
+            if (snoop_gone(e, pi))
+                continue;
             slug(s, ENGINES[e]->presets[pi].name, sizeof s);
             snprintf(name, sizeof name, "cpu/%s/%02u_%s", ENGINES[e]->name, pi, s);
             j = add(J_CPU, name);

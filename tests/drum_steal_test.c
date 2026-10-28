@@ -90,7 +90,7 @@ int main(void)
         c2 = run_kit(kit, 1, &kicks, &nat);
         lost = lostk = early = hits = 0;
         printf("drums: kit %2u (%-8s) kick %4u ms; kicks cut by another sound: simple beat %u/%u, busy beat %u/%u %s\n", kit,
-               kit >= DRUM_SAMPLED ? DS_KITS[kit - DRUM_SAMPLED].name : "GM", nat, c1, kicks, c2, kicks, c1 || c2 ? "FAIL" : "ok");
+               kit >= DRUM_SAMPLED ? (*ds_kit(kit - DRUM_SAMPLED)).name : "GM", nat, c1, kicks, c2, kicks, c1 || c2 ? "FAIL" : "ok");
         fails += c1 || c2;
     }
     printf("drums: %u kits failed\n", fails);

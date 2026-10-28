@@ -131,6 +131,10 @@ def name_note(name):
 # SLOOP 2.7.2: sets that keep their first sound only, over the whole keyboard (SCRCH: the scratch, 3 KB; the backspin
 # and the rewind, 20 KB, made room for the NOTES editor). The set and its number stay: projects and presets unchanged
 ONE_SOUND = {"SCRCH"}
+# SNOOP: sets taken out (flash for the granular work): their set number stays, with no zones (silent), so the
+# sets after them, the presets and every project keep their numbers. BASS: the upright bass (38 KB: UP BASS,
+# DEEP BASS); SCRCH: the scratch (3 KB)
+REMOVED_SETS = {"BASS", "SCRCH"}
 
 
 def cc0_entries(setname, kind):
@@ -351,6 +355,10 @@ class Builder:
         self.kinds["PERC"] = "kit"
 
     def cc0_set(self, name, kind):
+        if name in REMOVED_SETS:                  # (SNOOP) kept as an empty set: the numbering stays
+            self.sets.append((name, 0, 0))
+            self.kinds[name] = kind
+            return
         entries = []
         for k, (_, s, loop, root) in enumerate(cc0_entries(name, kind)):
             ls, le = loop if loop else (len(s), len(s))
