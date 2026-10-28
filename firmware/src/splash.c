@@ -51,16 +51,13 @@ UI_SMALL static void sloop_logo_draw(uint32_t y0)
 }
 #endif
 
-/* the boot screen: the logo, the version, where it comes from */
+/* the boot screen: the logo, the version, where it comes from (SNOOP: The Noisery's logo, "SNOOP 0.9") */
 UI_SMALL static void sloop_splash(void)
 {
     lcd_fill(0, 0, 240, 240, C_BLACK);
-    sloop_logo_draw(10);
-    const char *v = FELUCCA_VERSION;
-    if (v[0] == 'S' && (v[1] == 'L' || v[1] == 'N') && v[5] == ' ')
-        v += 6;                                         /* "SLOOP 1.0" / "SNOOP 0.1" -> the number under the wordmark */
-    cv_begin(240, 36, C_BLACK);
-    cv_text(120 - text_w(&FONT_S, v) / 2, 0, &FONT_S, v, RGB(196, 196, 204));
-    cv_text(120 - text_w(&FONT_S, "sloop + felucca") / 2, 18, &FONT_S, "sloop + felucca", RGB(96, 96, 104));   /* SNOOP */
-    cv_blit(0, 202);
+    sloop_logo_draw(4);
+    cv_begin(240, 44, C_BLACK);
+    cv_text(120 - text_w(&FONT_S, FELUCCA_VERSION) / 2, 0, &FONT_S, FELUCCA_VERSION, RGB(220, 220, 228));
+    cv_text(120 - text_w(&FONT_S, "sloop + felucca") / 2, 20, &FONT_S, "sloop + felucca", RGB(96, 96, 104));
+    cv_blit(0, 194);
 }
