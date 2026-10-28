@@ -3,7 +3,7 @@
 /* Felucca user interface. Four columns map to KNOB 1..4. Rendering is lazy:
  * every element remembers what it last drew and is redrawn only on change. */
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "SNOOP 0.7"  /* The Noisery's build of SLOOP 2.8.3 (based on Felucca) */
+#define FELUCCA_VERSION "SNOOP 0.8"  /* The Noisery's build of SLOOP 2.8.3 (based on Felucca) */
 #endif
 static void project_save(uint32_t slot);
 static void arrangement_save(void);
@@ -758,6 +758,9 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
     {BK_FX, ENGI_NOISE, "VINYL"}, {BK_FX, ENGI_NOISE, "HISS"}, {BK_FX, ENGI_NOISE, "RISER"},
     {BK_FX, ENGI_NOISE, "NZ SNARE"}, {BK_FX, ENGI_NOISE, "BITCRUSH"}, {BK_FX, ENGI_NOISE, "RADIO"},
     {BK_FX, 3, "CHIP NOISE"},
+    {BK_PAD, ENGI_STRETCH, "PNO STRETCH"}, {BK_PAD, ENGI_STRETCH, "STR ETHER"}, {BK_PAD, ENGI_STRETCH, "VIBE MIST"},   /* SNOOP */
+    {BK_PAD, ENGI_STRETCH, "FLUTE AIR"}, {BK_PAD, ENGI_STRETCH, "HORN DRONE"}, {BK_PAD, ENGI_STRETCH, "PNO FROZEN"},
+    {BK_FX, ENGI_STRETCH, "USR STRETCH"}, {BK_FX, ENGI_STRETCH, "LIVE STRETCH"}, {BK_FX, ENGI_STRETCH, "LIVE FREEZE"},
 #if FELUCCA_SLICE
     {BK_FX, ENGI_SLICE, "BREAK 16"}, {BK_FX, ENGI_SLICE, "CHOP 8"}, {BK_FX, ENGI_SLICE, "REVERSE"},
     {BK_FX, ENGI_SLICE, "USR SLICE"},

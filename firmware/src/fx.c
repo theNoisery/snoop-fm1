@@ -5,6 +5,10 @@
 #define DLY_LEN 65536u           /* 1.49 s: 1/4 down to 41 BPM, 1/8 dotted down to 31, 1/4 dotted down to 61 (clamped below) */
 #define CHO_LEN 2048u
 static int16_t dly_buf[DLY_LEN] __attribute__((section(".pool")));
+/* (SNOOP) the delay's ring: the whole buffer, or its lower half while a STRETCH part plays a LIVE source (the upper
+ * half is then the capture ring, eng_stretch.c LIVE_LEN); switched under the delay's duck, the buffer cleared */
+static uint32_t dly_ring = DLY_LEN;
+static int16_t *live_buf(void) { return dly_buf + DLY_LEN / 2u; }
 static int16_t cho_buf[CHO_LEN] __attribute__((section(".pool")));
 /* the reverb: two input diffusers, then four delay lines mixed by a Hadamard matrix (a feedback delay
  * network: every echo feeds all four, so it thickens instead of ringing like a comb), damped in the
@@ -44,18 +48,18 @@ static struct {
 } tape;
 #define TAPE_WOW_INC ((uint32_t)(0.6 * 4294967296.0 * CTL / FS))    /* per block */
 #define TAPE_FLT_INC ((uint32_t)(6.7 * 4294967296.0 * CTL / FS))
-#define TAPE_MAX_D ((int32_t)(DLY_LEN - 1024u) << 8)                /* (room for the wow behind the longest TIME) */
+#define TAPE_MAX_D ((int32_t)(dly_ring - 1024u) << 8)                /* (room for the wow behind the longest TIME) */
 /* (SNOOP 0.3) PING: ping-pong with the one buffer. The loop is two echoes long: the line y = in + g^2 y(2T) is read at
  * T for the left (echo 1, 3, 5 ...) and at 2T for the right, g y(2T) (echo 2, 4 ...); COLR's low-pass is two poles in
  * that loop (each echo as dark as the mono one's). A bounce is at most PING_MAX: half the buffer */
-#define PING_MAX ((DLY_LEN - 2048u) / 2u)
+#define PING_MAX ((dly_ring - 2048u) / 2u)
 static inline int32_t dly_tap(int32_t r)                /* the line r (Q8 samples) back, interpolated */
 {
     uint32_t ri;
     int32_t c0, c1;
     r = r < (2 << 8) ? 2 << 8 : r > TAPE_MAX_D ? TAPE_MAX_D : r;
     ri = (uint32_t)r >> 8;
-    c0 = dly_buf[(fx.dly_w - ri) & (DLY_LEN - 1u)], c1 = dly_buf[(fx.dly_w - ri - 1u) & (DLY_LEN - 1u)];
+    c0 = dly_buf[(fx.dly_w - ri) & (dly_ring - 1u)], c1 = dly_buf[(fx.dly_w - ri - 1u) & (dly_ring - 1u)];
     return c0 + (((c1 - c0) * (r & 255)) >> 8);
 }
 /* the tape: a cubic soft clip, x Q14 (16384: an echo at full scale) -> the same scale, flat at 1.5x (output 16384) */
@@ -243,7 +247,7 @@ static uint32_t delay_samples(int ping)
                                  : dly_samples((uint32_t)song.g[G_DTIME]);
     if (ping && s > PING_MAX)                           /* (SNOOP 0.3) a bounce: half the buffer at most */
         s = PING_MAX;
-    return s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
+    return s < 16u ? 16u : s >= dly_ring ? dly_ring - 1u : s;   /* (as SLOOP; TAPE: dly_tap keeps its room) */
 }
 
 /* process the three buses for one block; sends in, wet out (stereo). The LFOs (chorus, reverb line)
@@ -289,9 +293,20 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         sm.ca1 = -1;
         sm.cdepth = song.g[G_CDEPTH] * 6;
     }
-    {   /* MODE / PING turned: duck out (128 samples), switch, duck back in (256) */
-        int want = (song.g[G_DMODE] != 0) != sm.mode || (song.g[G_DPING] != 0) != sm.ping;
+    {   /* MODE / PING turned: duck out (128 samples), switch, duck back in (256). (SNOOP) and LIVE: the ring halves */
+        uint32_t lw = 0, p;
+        for (p = 0; p < NPART; p++)
+            lw |= live_want[p];
+        lw = lw != 0;
+        int want = (song.g[G_DMODE] != 0) != sm.mode || (song.g[G_DPING] != 0) != sm.ping || lw != live_on;
         duck0 = sm.duck;
+        if (want && !sm.duck && lw != live_on) {        /* the delay on half the buffer (or back), all of it cleared */
+            live_on = (uint8_t)lw;
+            dly_ring = lw ? DLY_LEN / 2u : DLY_LEN;
+            memset(dly_buf, 0, sizeof dly_buf);
+            fx.dly_w = 0, live_w = 0;
+            tape.on = 0;
+        }
         if (want && !sm.duck) {
             sm.mode = (uint8_t)(song.g[G_DMODE] != 0), sm.ping = (uint8_t)(song.g[G_DPING] != 0);
             sm.dl = delay_samples(sm.ping), sm.xf_n = 0;    /* (the new structure from its own read head) */
@@ -421,9 +436,9 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         fx.cho_w++;
         if (!is_tape && !ping && !sm.xf_n && duck0 == 32767 && !dduck && !dfb && !ddmix) {
         /* delay with a low-passed feedback (in the middle) */
-        x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
+        x = dly_buf[(fx.dly_w - dl) & (dly_ring - 1u)];
         fx.dly_lp += mulq15(x - fx.dly_lp, col);
-        dly_buf[fx.dly_w & (DLY_LEN - 1u)] =
+        dly_buf[fx.dly_w & (dly_ring - 1u)] =
             (int16_t)clamp((dly_in[i] >> 1) + mulq15(fx.dly_lp, fb), -32768, 32767);
         fx.dly_w++;
         x = mulq15(x << 1, dmix);
@@ -452,12 +467,12 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
                 x = dly_tap(tape.d + r);
                 f = ping ? dly_tap(2 * tape.d + r) : x; /* (PING: the right, two echoes back) */
             } else {
-                x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
-                f = ping ? dly_buf[(fx.dly_w - 2u * dl) & (DLY_LEN - 1u)] : x;
+                x = dly_buf[(fx.dly_w - dl) & (dly_ring - 1u)];
+                f = ping ? dly_buf[(fx.dly_w - 2u * dl) & (dly_ring - 1u)] : x;
                 if (sm.xf_n) {                          /* (0.5) TIME turned: from the old head to the new */
-                    int32_t wt = (int32_t)(sm.xf_n * (32768u / XF_LEN)), xo = dly_buf[(fx.dly_w - sm.xf_from) & (DLY_LEN - 1u)];
+                    int32_t wt = (int32_t)(sm.xf_n * (32768u / XF_LEN)), xo = dly_buf[(fx.dly_w - sm.xf_from) & (dly_ring - 1u)];
                     x += mulq15(xo - x, wt);
-                    f = ping ? f + mulq15(dly_buf[(fx.dly_w - 2u * sm.xf_from) & (DLY_LEN - 1u)] - f, wt) : x;
+                    f = ping ? f + mulq15(dly_buf[(fx.dly_w - 2u * sm.xf_from) & (dly_ring - 1u)] - f, wt) : x;
                     sm.xf_n--;
                 }
             }
@@ -490,7 +505,7 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
                 x = mulq15(x << 1, dmx);
                 xr = mulq15(xr << 1, dmx);
             }
-            dly_buf[fx.dly_w & (DLY_LEN - 1u)] = (int16_t)w;
+            dly_buf[fx.dly_w & (dly_ring - 1u)] = (int16_t)w;
             fx.dly_w++;
             yl += x;
             yr += ping ? xr : x;
@@ -970,6 +985,9 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
             if (djf_block(f, t->p[P_TFLT], &fc, tflt_reso()))
                 tflt_run(f, &fc, b, n, 0);
         }
+        if (live_cap_src == (uint32_t)(t - trk) + 1u)    /* (SNOOP) LIVE records this track: before its LEVEL */
+            for (i = 0; i < n; i++)
+                live_cap[i] = b[i];
         int32_t lvl0, dl, gl0, dgl, gr0, dgr;          /* (2.7) LEVEL (and a new sound's trim) and PAN glide (drums.c
                                                          * mix_glide), ramped sample by sample inside the block */
         if (!t->mix_on)
@@ -1495,6 +1513,26 @@ static void mix_block(int32_t *out, uint32_t n)
                                                          * (what it adds does not depend on them: the same sum) */
     punch_freeze_feed(acc[0].sr, mix_l, mix_r, n);     /* punch-in FREEZE: the whole dry mix into the held reverb */
     fx_buses(acc[0].sc, acc[0].sd, acc[0].sr, wet_l, wet_r, n);
+    {   /* (SNOOP) LIVE: the chosen track's block into the ring at 22.05 kHz, unless a STRETCH voice holds it; the
+         * track for the next block's taps (mix_part_run, drums_mix) */
+        uint32_t p, src = 0, hold = 0;
+        for (p = 0; p < NPART; p++) {
+            if (live_want[p] && !src)
+                src = live_want[p];
+            hold |= live_hold[p];
+            live_want[p] = live_hold[p] = 0;
+        }
+        if (live_on && !hold) {
+            int16_t *rb = live_buf();
+            for (i = 0; i + 1u < n; i += 2u) {
+                rb[live_w] = (int16_t)clamp((live_cap[i] + live_cap[i + 1u]) >> 2, -32768, 32767);
+                live_w = (live_w + 1u) & (LIVE_LEN - 1u);
+            }
+        }
+        live_cap_src = (uint8_t)(live_on ? src : 0u);
+        for (i = 0; i < n; i++)
+            live_cap[i] = 0;
+    }
     for (i = 0; i < n; i++) {
         mix_l[i] += wet_l[i];
         mix_r[i] += wet_r[i];

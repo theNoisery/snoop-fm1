@@ -418,6 +418,8 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
             int32_t s = mulq15(ds_buf[i], mulq15(lvl, 32767 - drums.a0 - (((drums.a1 - drums.a0) * (int32_t)i) >> CTL_LOG2)));
             s = DRUM_VOICE_FX(k, s);
             v->s[7] = s;
+            if (live_cap_src == TRK_DRUM + 1u)          /* (SNOOP) LIVE records the drums: each sound before its pan */
+                live_cap[i] += s;
             if (s > pk || -s > pk)
                 pk = s < 0 ? -s : s;
             if (mono) {
@@ -480,6 +482,8 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
             }
             s = DRUM_VOICE_FX(k, s);
             v->s[7] = s;
+            if (live_cap_src == TRK_DRUM + 1u)          /* (SNOOP) LIVE records the drums: each sound before its pan */
+                live_cap[i] += s;
             if (s > pk || -s > pk)
                 pk = s < 0 ? -s : s;
             if (mono) {

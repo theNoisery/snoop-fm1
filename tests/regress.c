@@ -811,6 +811,8 @@ static job_t *add(uint32_t kind, const char *name)
 static int snoop_gone(uint32_t e, uint32_t pi)
 {
     const char *n = ENGINES[e]->presets[pi].name;
+    if (ENGINES[e] == &ENG_STRETCH)                     /* (STRETCH on a user slot or LIVE: nothing to play here) */
+        return ENGINES[e]->presets[pi].e[0] >= SMP_NSETS;
     return ENGINES[e] == &ENG_SAMPLE && (!strcmp(n, "UP BASS") || !strcmp(n, "DEEP BASS") || !strcmp(n, "SCRATCH"));
 }
 

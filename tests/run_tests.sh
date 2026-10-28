@@ -173,6 +173,9 @@ $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/hush_test" tests/hush_test.c -lm
 run "SNOOP: no click when the flash is written (the hush), the autosave waits for the tails" "$OUT/hush_test"
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/removed_test" tests/removed_test.c -lm
 run "SNOOP: the sounds taken out (kit numbers kept, the knob skips them, the emptied sets silent)" "$OUT/removed_test"
+$CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/stretch_test" tests/stretch_test.c -lm
+mkdir -p build/stretch_demo
+run "SNOOP STRETCH: held chords, the playhead, LIVE (the ring, hold, the delay's half), drums, cost, demos" "$OUT/stretch_test" build/stretch_demo
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/regress" tests/regress.c -lm
 # the CPU budget: counted by the kernel on macOS; elsewhere under callgrind when valgrind is there (exact, ~45 s;
 # SKIP_CPU_VALGRIND=1 to time instead, which is only a rough check)
