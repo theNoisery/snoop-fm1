@@ -28,7 +28,7 @@ OUT=build/host
 mkdir -p "$OUT"
 CC="${CC:-cc} -O1 -Wall -Wno-unused-function"
 fail=0
-run() { echo "== $1"; shift; "$@" || fail=1; }
+run() { echo "== $1"; _n="$1"; shift; "$@" || { fail=1; echo "  FAIL (exit status) $_n"; }; }
 
 [ -f build/felucca.fwsc ] || { echo "run ./build.sh first"; exit 1; }
 # the generated headers the FM6 engine needs (tools/build.py generate() makes them too; no Pillow needed)
