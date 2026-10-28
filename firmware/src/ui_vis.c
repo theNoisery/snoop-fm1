@@ -41,6 +41,7 @@ static struct {
     uint8_t flash[4], last;                         /* frames since a note started (0 = none); the track last */
     uint32_t free_q8, last_ms, rnd;                 /* beats (1/256) when stopped; a random number */
     uint8_t lj_n, prev_ok;
+    uint32_t bounces;                               /* HEXAGON: walls hit (tests/vis_test.c) */
 } vs;
 /* the spectrum's bands: bins of the 512-point FFT at 22 050 Hz (43 Hz each), 43 Hz .. 10 kHz, log spaced */
 static const uint8_t VIS_EDGE[VIS_NB + 1u] = {1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 6, 7, 7,
@@ -48,17 +49,17 @@ static const uint8_t VIS_EDGE[VIS_NB + 1u] = {1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2
                                               69, 77, 87, 98, 110, 124, 139, 157, 176, 198, 223, 232};
 
 /* the OP-1's colours */
-#define OP_BG RGB(16, 16, 20)
+#define OP_BG RGB(0, 0, 0)                  /* (0.9.1: black, as the other screens: a grey looked faded on the FM-1) */
 #define OP_BLUE RGB(84, 120, 246)
 #define OP_GREEN RGB(22, 222, 140)
 #define OP_WHITE RGB(236, 236, 242)
 #define OP_RED RGB(246, 52, 84)
 #define OP_LAV RGB(184, 184, 236)
-#define OP_TEAL RGB(26, 80, 92)
-#define OP_GREY RGB(96, 96, 112)
-#define OP_DIM RGB(58, 58, 70)
-#define OP_DARK RGB(36, 36, 44)
-#define OP_MAROON RGB(116, 28, 48)
+#define OP_TEAL RGB(30, 98, 112)
+#define OP_GREY RGB(124, 124, 140)
+#define OP_DIM RGB(72, 72, 88)
+#define OP_DARK RGB(44, 44, 54)
+#define OP_MAROON RGB(140, 32, 56)
 static const uint16_t OP_TRK[4] = {OP_BLUE, OP_GREEN, OP_WHITE, OP_RED};
 
 static int vis_shown(void) { return vis_on && !ui.home && !ui.menu && cur_page()->scope == SC_TRK; }
@@ -132,6 +133,7 @@ static void op_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t w, u
 {
     int32_t dx = x1 - x0, dy = y1 - y0, adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy, steep = ady > adx;
     int32_t u0, v0, u1, v1, du, slope, hw, i, i1;
+    w = w * 5 / 4;                                  /* (0.9.1: a little bolder, crisper on the FM-1) */
     if (op_off_band(y0 < y1 ? y0 - w : y1 - w, y0 > y1 ? y0 + w : y1 + w))
         return;
     if (steep)
@@ -451,11 +453,11 @@ static void vis_bands(int16_t *out)
 #define HX_CX PX(120)
 #define HX_CY PX(128)
 static int32_t hx_r(void) { return PX(52) + vs.sm[4] * PX(32) / 1000; }
-static uint32_t hx_turn(void) { return vis_beat_q8() / 6u; }          /* a side (1/6 turn) a bar of four */
+static uint32_t hx_turn(void) { return vis_beat_q8() / 3u; }          /* a side (1/6 turn) every two beats */
 static void hx_balls(uint32_t hit)
 {
     uint32_t i, k, turn = hx_turn();
-    int32_t ap = hx_r() * 887 / 1024 - PX(5);       /* the apothem (the edges' distance), less a ball */
+    int32_t ap = hx_r() * 887 / 1024 - PX(5);       /* the apothem (the edges' distance), less a ball and the line */
     for (i = 0; i < 4u; i++) {
         if ((hit >> i) & 1u || vs.lvl[i] > 0) {
             if (!vs.alive[i]) {                     /* comes in from the middle */
@@ -467,15 +469,21 @@ static void hx_balls(uint32_t hit)
         } else if (vs.alive[i]) {
             vs.alive[i]--;
         }
-        if ((hit >> i) & 1u) {                      /* a note: up to a height (above the middle, at most), so
-                                                     * notes coming fast do not lift it ever higher */
-            int32_t top = HX_CY - ap * (int32_t)(vis_rand() % 40u) / 100, dy = vs.by[i] - top;
-            if (dy > PX(4) && vs.bvy[i] > -PX(1))
-                vs.bvy[i] = -(int32_t)vis_isqrt((uint32_t)(2 * 56 * dy));
-            vs.bvx[i] += (int32_t)(vis_rand() % 513u) - 256;
+        {                                           /* free flight, no gravity: they ricochet off the walls */
+            int32_t sp = (int32_t)vis_isqrt((uint32_t)((vs.bvx[i] >> 2) * (vs.bvx[i] >> 2) + (vs.bvy[i] >> 2) * (vs.bvy[i] >> 2))) << 2;
+            if ((hit >> i) & 1u) {                  /* a note: faster (up to 7 px a frame), a little turned */
+                if (sp < PX(1)) {
+                    uint32_t a = vis_rand() & 1023u;
+                    vs.bvx[i] = icos(a) / 16, vs.bvy[i] = isin(a) / 16;   /* 2 px a frame, any way */
+                } else {
+                    int32_t k2 = sp < PX(4) ? 400 : sp < PX(7) ? 300 : 256, t = (int32_t)(vis_rand() % 129u) - 64;
+                    int32_t vx = vs.bvx[i] * k2 / 256, vy = vs.bvy[i] * k2 / 256;
+                    vs.bvx[i] = vx - vy * t / 512, vs.bvy[i] = vy + vx * t / 512;
+                }
+            } else if (sp > PX(1) + 128) {          /* slowing down between notes, never to a stop */
+                vs.bvx[i] = vs.bvx[i] * 250 / 256, vs.bvy[i] = vs.bvy[i] * 250 / 256;
+            }
         }
-        vs.bvy[i] += 56;                            /* gravity */
-        vs.bvx[i] = vs.bvx[i] * 255 / 256;
         vs.bx[i] += vs.bvx[i];
         vs.by[i] += vs.bvy[i];
         for (k = 0; k < 6u; k++) {                  /* the six edges: back in, and bounced */
@@ -486,9 +494,10 @@ static void hx_balls(uint32_t hit)
                 int32_t vn = (int32_t)(((int64_t)vs.bvx[i] * nx + (int64_t)vs.bvy[i] * ny) >> 15);
                 vs.bx[i] -= (int32_t)(((int64_t)(d - ap) * nx) >> 15);
                 vs.by[i] -= (int32_t)(((int64_t)(d - ap) * ny) >> 15);
-                if (vn > 0) {
-                    vs.bvx[i] -= (int32_t)(((int64_t)vn * nx) >> 15) * 175 / 100;   /* (loses a little) */
-                    vs.bvy[i] -= (int32_t)(((int64_t)vn * ny) >> 15) * 175 / 100;
+                if (vn > 0) {                       /* a mirror: bounced off the wall */
+                    vs.bounces++;
+                    vs.bvx[i] -= (int32_t)(((int64_t)vn * nx) >> 15) * 2;
+                    vs.bvy[i] -= (int32_t)(((int64_t)vn * ny) >> 15) * 2;
                 }
             }
         }

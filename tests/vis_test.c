@@ -67,6 +67,7 @@ int main(int argc, char **argv)
         uint32_t moved = 0, n = 0;
         double t0, sum = 0;
         vis_style = (uint8_t)st;
+        vs.bounces = 0;
         vis_name_t = 0;
         ui.force = 1; frames(40);
         memcpy(first, screen, sizeof first);
@@ -115,6 +116,8 @@ int main(int argc, char **argv)
             uint32_t k, alive = 0;
             for (k = 0; k < 4u; k++) alive += vs.alive[k] != 0;
             check(alive == 4u, "HEXAGON: a ball for each of the four tracks playing");
+            printf("  HEXAGON: %u bounces off the walls in 4 s\n", vs.bounces);
+            check(vs.bounces > 20u, "HEXAGON: the balls reach the walls and bounce off them");
         }
         if (st == 8u)
             check(vs.sm[0] > 300 && vs.sm[2] > 0, "TRACKS: the needles follow what the tracks play");
