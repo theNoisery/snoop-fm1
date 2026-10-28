@@ -730,9 +730,16 @@ UI_SMALL static void project_load(uint32_t slot)
 static project_t autosave_buf __attribute__((section(".pool")));
 static uint32_t autosave_hash, autosave_ms, autosave_checked;
 
+#define QUIET_BLOCKS (FS * 16u / 10u / CTL)    /* (SNOOP 0.6) 1.6 s of blocks */
+#define SAVE_ANYWAY_MS 30000u                  /* (SNOOP 0.6) a tail that never ends (TAPE past 100 %, FREEZE, TEXTURE
+                                                * ALWAYS): saved anyway after this long untouched, faded (audio_hush) */
 UI_SMALL static int audio_quiet(void)
 {
     uint32_t p, i;
+    if (out_quiet_n < QUIET_BLOCKS && fm1_ms - ui_input_ms < SAVE_ANYWAY_MS)   /* (SNOOP 0.6) the output itself under
+                                                                     * -60 dB for longer than the longest gap between two
+                                                                     * echoes (the delay's 1.46 s): no echo still to come */
+        return 0;
     for (p = 0; p < NPART; p++)
         for (i = 0; i < NVOICE; i++)
             if (trk[p].v[i].active)

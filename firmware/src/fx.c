@@ -1434,6 +1434,23 @@ static void texture_mix(int32_t *l, int32_t *r, uint32_t n)
         texture_reset(src);                             /* faded out: the new source from rest */
 }
 
+/* (SNOOP 0.6) a flash write (an erase, ~50 ms) stops the audio: the code runs from that flash. The saves (storage.c
+ * st_save3 -> ST_QUIET -> audio_hush) first fade the output out (~3 ms) and wait for it, then fade it back in after
+ * (~12 ms): a short silence, never a click. And the autosave waits for the output itself to be silent (the delay's and
+ * the reverb's tails too, not only the voices): out_quiet_n counts the blocks in a row under -60 dB */
+static volatile uint8_t hush_req, hush_done;
+static volatile uint32_t out_quiet_n;
+static void audio_hush(int on)
+{
+    uint32_t t0 = fm1_ms, spins = 0;
+    if (!on) {
+        hush_req = 0;
+        return;
+    }
+    hush_req = 1;
+    while (!hush_done && fm1_ms - t0 < 20u && ++spins < 4000000u)   /* (the audio stopped or not started: go on) */
+        ;
+}
 static void mix_block(int32_t *out, uint32_t n)
 {
     uint32_t i, c1;
@@ -1524,5 +1541,21 @@ static void mix_block(int32_t *out, uint32_t n)
                 usb_out[2u * i + 1u] = knee(ur[i]);
             }
         }
+    }
+    {   /* (SNOOP 0.6) the hush around a flash write; the output's silence for the autosave */
+        static int32_t hg = 32767;
+        int32_t pk = 0;
+        if (hush_req || hg != 32767) {
+            for (i = 0; i < n; i++) {
+                hg = hush_req ? (hg > 256 ? hg - 256 : 0) : (hg < 32767 - 64 ? hg + 64 : 32767);
+                out[2u * i] = mulq15(out[2u * i], hg), out[2u * i + 1u] = mulq15(out[2u * i + 1u], hg);
+                if (usb_full_now)
+                    usb_out[2u * i] = mulq15(usb_out[2u * i], hg), usb_out[2u * i + 1u] = mulq15(usb_out[2u * i + 1u], hg);
+            }
+        }
+        hush_done = (uint8_t)(hush_req && !hg);
+        for (i = 0; i < 2u * n; i++)
+            pk |= out[i] < 0 ? -out[i] : out[i];        /* (an upper bound of the peak: enough for "under 32") */
+        out_quiet_n = pk < 32 ? (out_quiet_n < 0xFFFFu ? out_quiet_n + 1u : out_quiet_n) : 0u;
     }
 }

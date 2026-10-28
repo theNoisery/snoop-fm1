@@ -174,8 +174,22 @@ UI_SMALL static int st_side_load(uint32_t obj, void *dst, uint32_t n)
 
 /* an object in up to three parts, src then src2 then src3 (SLOOP 2.5: the settings and the SYN kits after them;
  * 2.6: then the MIDI LEARN map) */
+#ifndef ST_QUIET
+#define ST_QUIET(on) ((void)0)           /* (SNOOP 0.6) the firmware: the audio faded out around a write (fx.c audio_hush) */
+#endif
+UI_SMALL static int st_save3_raw(uint32_t obj, const void *src, uint32_t len, const void *src2, uint32_t len2, const void *src3,
+                        uint32_t len3);
 UI_SMALL static int st_save3(uint32_t obj, const void *src, uint32_t len, const void *src2, uint32_t len2, const void *src3,
                     uint32_t len3)
+{
+    int rc;
+    ST_QUIET(1);
+    rc = st_save3_raw(obj, src, len, src2, len2, src3, len3);
+    ST_QUIET(0);
+    return rc;
+}
+UI_SMALL static int st_save3_raw(uint32_t obj, const void *src, uint32_t len, const void *src2, uint32_t len2,
+                                 const void *src3, uint32_t len3)
 {
     uint32_t seq, base, off;
     int cur, rc;

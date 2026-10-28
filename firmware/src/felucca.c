@@ -124,6 +124,7 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
     return fl_write(off, src, n);
 }
 #define ST_XIP_PTR(off) fm1_xip_ptr(off)   /* sloop-lab: storage.c st_xip, an object read where it is (fm1_xip.h) */
+#define ST_QUIET(on) audio_hush(on)   /* (SNOOP 0.6) fx.c: no click when the flash is written */
 #include "storage.c"
 #endif
 #include "upreset.c"          /* user presets (read in the XIP window; the host test keeps a RAM mirror) */
