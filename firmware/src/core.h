@@ -107,6 +107,8 @@ enum {                          /* global parameters */
                                  * before) .. 15 (punch.c; a setting of the FM-1, kept in BEND's byte) */
     G_DMODE, G_DWOW, G_DDRIVE,  /* SNOOP, FX > DLY 2: the delay as DIGI (SLOOP's, bit for bit) or TAPE (fx.c tape_*): wow and
                                  * flutter, the drive into the tape. In a project (project.c proj_dly_put) */
+    G_DPING,                    /* SNOOP 0.3, DLY 2: PING, the echoes left, right, left... (both modes) */
+    G_DSYNC, G_DMS,             /* SNOOP 0.3, DLY 3: SYNC (TIME a note value of the tempo, as SLOOP) or FREE (TIME in ms) */
     G_COUNT
 };
 
@@ -369,6 +371,7 @@ static uint32_t pattern_units(uint32_t slen, uint32_t sdiv)
 {
     return (slen < 1u ? 1u : slen > NSTEP ? NSTEP : slen) * div_units(sdiv % NDIV_STEP);
 }
+#define DLY_MS_MAX 1460         /* (SNOOP) the longest FREE time: DLY_LEN (1.49 s) less room for the tape's wow */
 /* the delay's TIME in clock units (N_DLY order) */
 static uint32_t dly_units(uint32_t d)
 {

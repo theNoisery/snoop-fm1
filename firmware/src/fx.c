@@ -34,6 +34,7 @@ static struct {
 static struct {
     int32_t d;                           /* the read head's delay now, Q8 samples (glides to TIME) */
     int32_t lp, dc;                      /* COLR's low-pass; the high-pass' low-pass (Q8 more) */
+    int32_t lp2;                         /* (0.3) PING: COLR's second pole (a loop is two echoes there) */
     uint32_t wow_ph, flt_ph, rnd;
     int32_t drift, drift_to;             /* the random part of the wow, Q8 samples */
     int32_t mod;                         /* the wow + flutter of the last block's end, Q8 samples */
@@ -43,6 +44,19 @@ static struct {
 #define TAPE_WOW_INC ((uint32_t)(0.6 * 4294967296.0 * CTL / FS))    /* per block */
 #define TAPE_FLT_INC ((uint32_t)(6.7 * 4294967296.0 * CTL / FS))
 #define TAPE_MAX_D ((int32_t)(DLY_LEN - 1024u) << 8)                /* (room for the wow behind the longest TIME) */
+/* (SNOOP 0.3) PING: ping-pong with the one buffer. The loop is two echoes long: the line y = in + g^2 y(2T) is read at
+ * T for the left (echo 1, 3, 5 ...) and at 2T for the right, g y(2T) (echo 2, 4 ...); COLR's low-pass is two poles in
+ * that loop (each echo as dark as the mono one's). A bounce is at most PING_MAX: half the buffer */
+#define PING_MAX ((DLY_LEN - 2048u) / 2u)
+static inline int32_t dly_tap(int32_t r)                /* the line r (Q8 samples) back, interpolated */
+{
+    uint32_t ri;
+    int32_t c0, c1;
+    r = r < (2 << 8) ? 2 << 8 : r > TAPE_MAX_D ? TAPE_MAX_D : r;
+    ri = (uint32_t)r >> 8;
+    c0 = dly_buf[(fx.dly_w - ri) & (DLY_LEN - 1u)], c1 = dly_buf[(fx.dly_w - ri - 1u) & (DLY_LEN - 1u)];
+    return c0 + (((c1 - c0) * (r & 255)) >> 8);
+}
 /* the tape: a cubic soft clip, x Q14 (16384: an echo at full scale) -> the same scale, flat at 1.5x (output 16384) */
 static inline int32_t tape_sat(int32_t x)
 {
@@ -224,7 +238,10 @@ static inline void master_pre(int32_t *l, int32_t *r)
 
 static uint32_t delay_samples(void)
 {
-    uint32_t s = dly_samples((uint32_t)song.g[G_DTIME]);
+    uint32_t s = song.g[G_DSYNC] ? (uint32_t)song.g[G_DMS] * 441u / 10u   /* (SNOOP 0.3) FREE: ms */
+                                 : dly_samples((uint32_t)song.g[G_DTIME]);
+    if (song.g[G_DPING] && s > PING_MAX)                /* (SNOOP 0.3) a bounce: half the buffer at most */
+        s = PING_MAX;
     return s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
 }
 
@@ -244,7 +261,7 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
                                                          * loss, rounded to nearest; 0: as always, bit for bit) */
     int32_t cdepth = song.g[G_CDEPTH] * 6;
     int32_t ca0, ca1, cb0, cb1, ma, mb, dca, dcb;
-    const int is_tape = song.g[G_DMODE] != 0;          /* (SNOOP) */
+    const int is_tape = song.g[G_DMODE] != 0, ping = song.g[G_DPING] != 0;   /* (SNOOP) */
     int32_t t_fb = 0, t_m0 = 0, t_dm = 0, t_to = 0, t_gin = 4096, t_gout = 4096;
     if (is_tape) {
         int32_t w = song.g[G_DWOW], wow, flt;
@@ -258,7 +275,7 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         if (!tape.on) {                                 /* coming on: the head where TIME is, the filters empty */
             tape.on = 1;
             tape.d = t_to;
-            tape.lp = tape.dc = tape.mod = 0;
+            tape.lp = tape.lp2 = tape.dc = tape.mod = 0;
             tape.drift = tape.drift_to = 0;
         }
         tape.wow_ph += TAPE_WOW_INC;
@@ -303,7 +320,7 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             yr = (d0 + (((d1 - d0) * (r1 & 255)) >> 8)) << 1;
         }
         fx.cho_w++;
-        if (!is_tape) {
+        if (!is_tape && !ping) {
         /* delay with a low-passed feedback (in the middle) */
         x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
         fx.dly_lp += mulq15(x - fx.dly_lp, col);
@@ -311,32 +328,52 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             (int16_t)clamp((dly_in[i] >> 1) + mulq15(fx.dly_lp, fb), -32768, 32767);
         fx.dly_w++;
         x = mulq15(x << 1, dmix);
-        } else {                                        /* (SNOOP) TAPE, see `tape` above */
-            int32_t e = t_to - tape.d, r, y;
-            uint32_t ri;
-            if (e) {                                    /* the speed glides: 1/4096 of the way a sample (~93 ms), */
-                int32_t s = ((e < 0 ? -e : e) >> 12) + 1;   /* at most 3/4 of a sample per sample */
-                if (s > 192)
-                    s = 192;
-                tape.d += e < 0 ? -s : s;
-            }
-            r = tape.d + t_m0 + t_dm * (int32_t)i;
-            r = r < (2 << 8) ? 2 << 8 : r > TAPE_MAX_D ? TAPE_MAX_D : r;
-            ri = (uint32_t)r >> 8;
-            {
-                int32_t c0 = dly_buf[(fx.dly_w - ri) & (DLY_LEN - 1u)], c1 = dly_buf[(fx.dly_w - ri - 1u) & (DLY_LEN - 1u)];
-                x = c0 + (((c1 - c0) * (r & 255)) >> 8);
-            }
-            tape.lp += mulq15(x - tape.lp, col);        /* COLR */
-            tape.dc += ((tape.lp << 8) - tape.dc) >> 8;     /* the high-pass' low-pass: one pole at ~27 Hz */
-            y = tape.lp - (tape.dc >> 8);
-            y = tape_sat(((clamp(dly_in[i] >> 1, -49152, 49152) * (t_gin >> 2)) >> 10) + mulq15(y, t_fb));   /* DRIVE in */
-            dly_buf[fx.dly_w & (DLY_LEN - 1u)] = (int16_t)y;
-            fx.dly_w++;
-            x = mulq15(mulq15(x << 1, t_gout << 3), dmix);
-        }
         yl += x;
         yr += x;
+        } else {                                        /* (SNOOP) TAPE and / or PING, see `tape` and PING_MAX above */
+            int32_t r, f, w, xr, gain = is_tape ? t_fb : fb, *lp1 = is_tape ? &tape.lp : &fx.dly_lp;
+            if (is_tape) {
+                int32_t e = t_to - tape.d;
+                if (e) {                                /* the speed glides: 1/4096 of the way a sample (~93 ms), */
+                    int32_t s = ((e < 0 ? -e : e) >> 12) + 1;   /* at most 3/4 of a sample per sample */
+                    if (s > 192)
+                        s = 192;
+                    tape.d += e < 0 ? -s : s;
+                }
+                r = t_m0 + t_dm * (int32_t)i;           /* the wow and flutter */
+                x = dly_tap(tape.d + r);
+                f = ping ? dly_tap(2 * tape.d + r) : x; /* (PING: the right, two echoes back) */
+            } else {
+                x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
+                f = dly_buf[(fx.dly_w - 2u * dl) & (DLY_LEN - 1u)];   /* (PING only here) */
+            }
+            *lp1 += mulq15(f - *lp1, col);              /* COLR */
+            f = *lp1;
+            if (ping) {
+                tape.lp2 += mulq15(f - tape.lp2, col);
+                f = tape.lp2;
+            }
+            if (is_tape) {
+                tape.dc += ((f << 8) - tape.dc) >> 8;   /* the high-pass' low-pass: one pole at ~27 Hz */
+                f -= tape.dc >> 8;
+            }
+            xr = 0;
+            if (ping)
+                f = xr = mulq15(f, gain);               /* the right: g y(2T); the loop: g^2 y(2T) */
+            if (is_tape) {
+                w = tape_sat(((clamp(dly_in[i] >> 1, -49152, 49152) * (t_gin >> 2)) >> 10) + mulq15(f, gain));   /* DRIVE */
+                x = mulq15(mulq15(x << 1, t_gout << 3), dmix);
+                xr = mulq15(mulq15(xr << 1, t_gout << 3), dmix);
+            } else {
+                w = clamp((dly_in[i] >> 1) + mulq15(f, gain), -32768, 32767);
+                x = mulq15(x << 1, dmix);
+                xr = mulq15(xr << 1, dmix);
+            }
+            dly_buf[fx.dly_w & (DLY_LEN - 1u)] = (int16_t)w;
+            fx.dly_w++;
+            yl += x;
+            yr += ping ? xr : x;
+        }
         /* reverb: two diffusers, then the four lines */
         a = mulq15(rev_in[i], 13000);
         {

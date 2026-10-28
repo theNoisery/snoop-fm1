@@ -43,7 +43,10 @@ typedef struct {
     const double *at;                       /* note times (s), < 0 ends */
     const int *time_at;                     /* optional: {second, TIME, second, TIME, ..., -1} */
     const char *wav;
+    int ping, sync, ms;                     /* (0.3) PING, SYNC FREE, its ms */
+    int dry;                                /* (0.3) MIX 0: the dry alone */
 } run_t;
+static int32_t outl[3 * FS], outr[3 * FS];  /* (0.3) the first 3 s */
 static double rms[64], dc_late;
 static int32_t peak, max_jump, head_step, head_glide_ms;
 static int render(const char *dir, const run_t *r)
@@ -62,7 +65,8 @@ static int render(const char *dir, const run_t *r)
     song.g[G_DRLVL] = 0;
     song.g[G_DMODE] = (int16_t)r->mode, song.g[G_DFDBK] = (int16_t)r->fdbk, song.g[G_DTIME] = (int16_t)r->time;
     song.g[G_DWOW] = (int16_t)r->wow, song.g[G_DDRIVE] = (int16_t)r->drive, song.g[G_DCOLOR] = (int16_t)r->colr;
-    song.g[G_DMIX] = 110;
+    song.g[G_DMIX] = r->dry ? 0 : 110;
+    song.g[G_DPING] = (int16_t)r->ping, song.g[G_DSYNC] = (int16_t)r->sync, song.g[G_DMS] = (int16_t)(r->ms ? r->ms : 375);
     memset(dly_buf, 0, sizeof dly_buf);
     fx.dly_lp = 0;
     tape.on = 0;
@@ -102,6 +106,7 @@ static int render(const char *dir, const run_t *r)
             if (fr > FS && (j < 0 ? -j : j) > max_jump) max_jump = j < 0 ? -j : j;
             if (sec < 64u) sq[sec] += (double)l * l;
             if (fr + k >= frames - 2u * FS) sum_late += l, cnt_late++;
+            if (fr + k < 3u * FS) outl[fr + k] = out[2 * k], outr[fr + k] = out[2 * k + 1];
             if (f) wav_put(f, out[2 * k], out[2 * k + 1]);
         }
     }
@@ -162,6 +167,56 @@ int main(int argc, char **argv)
         song.g[G_DMODE] = 1;
         proj_apply(&p, 1);
         check(song.g[G_DMODE] == 0 && song.g[G_DWOW] == GP[G_DWOW].def, "a SLOOP project opens as DIGI");
+    }
+
+    /* 7. (0.3) PING and FREE: one note at 0.2 s (block 276: sample 8832), FREE 250 ms: the first echo on the left
+     * 250 ms later, the second on the right 500 ms later; then TAPE 110 % with a long TIME, bounded */
+    {
+        const uint32_t note = 8832u, T = 250u * 441u / 10u;
+        static int32_t dl[3 * FS], dr[3 * FS];
+        uint32_t k, onl = 0, onr = 0, l_first = 0, r_first = 0;
+        render(0, &(run_t){0, 90, 1, 0, 0, 80, 3.0, ONE, 0, 0, 1, 1, 250, 1});   /* the dry alone */
+        memcpy(dl, outl, sizeof dl), memcpy(dr, outr, sizeof dr);
+        render(dir, &(run_t){0, 90, 1, 0, 0, 80, 6.0, ONE, 0, "digi-ping-free-250ms.wav", 1, 1, 250});
+        for (k = note; k < 3u * FS; k++) {              /* each side's echoes: the output less the dry */
+            int32_t el = outl[k] - dl[k], er = outr[k] - dr[k];
+            if (!onl && (el > 300 || el < -300)) onl = k, l_first = er > -300 && er < 300;
+            if (!onr && (er > 300 || er < -300)) onr = k;
+        }
+        printf("  ping, FREE 250 ms: left echo at +%d samples, right at +%d (expected +%u, +%u)\n", (int)(onl - note),
+               (int)(onr - note), T, 2u * T);
+        check(onl >= note + T && onl < note + T + 200u && l_first, "FREE 250 ms: the first echo 250 ms after the note, left only");
+        check(onr >= note + 2u * T && onr < note + 2u * T + 200u, "PING: the second echo 500 ms after it, on the right");
+        render(dir, &(run_t){1, 110, 8, 40, 60, 70, 10.0, MELODY, 0, "tape-ping-110.wav", 1, 0, 0});
+        check(peak <= 32767 && rms[9] > 1000.0, "PING + TAPE 110 %, TIME 1/4D (clamped to half the buffer): self-oscillates, bounded");
+        render(dir, &(run_t){0, 80, 1, 0, 0, 80, 3.0, MELODY, 0, "digi-free-12ms-comb.wav", 0, 1, 12});
+        check(peak <= 32767, "FREE 12 ms, FDBK 80 %: a comb, bounded");
+    }
+    {   /* (0.3) PING, SYNC, MS in a project; a 0.2 project (MS bits 0) opens with 375 ms; the DLY page's TIME is the ms
+         * when FREE */
+        project_t p;
+        const page_t *pg = 0;
+        int16_t *vp = 0;
+        uint32_t k;
+        song.g[G_DPING] = 1, song.g[G_DSYNC] = 1, song.g[G_DMS] = 1234, song.g[G_DMODE] = 1, song.g[G_DWOW] = 5;
+        proj_capture(&p);
+        song.g[G_DPING] = 0, song.g[G_DSYNC] = 0, song.g[G_DMS] = 1;
+        proj_apply(&p, 1);
+        check(song.g[G_DPING] == 1 && song.g[G_DSYNC] == 1 && song.g[G_DMS] == 1234 && song.g[G_DMODE] == 1 &&
+              song.g[G_DWOW] == 5, "a project keeps PING, SYNC FREE and its ms (with MODE, WOW)");
+        p.g[G_LOAD] = (int16_t)(p.g[G_LOAD] & 0x40FF), p.g[G_SLOT] = (int16_t)(p.g[G_SLOT] & 0x407F);   /* as 0.2 saved */
+        proj_apply(&p, 1);
+        check(song.g[G_DMS] == 375 && !song.g[G_DPING] && !song.g[G_DSYNC] && song.g[G_DWOW] == 5,
+              "a SNOOP 0.2 project: PING off, SYNC, 375 ms; its MODE / WOW kept");
+        for (k = 0; k < NPAGES; k++)
+            if (!strcmp(PAGES[k].title, "DLY"))
+                pg = &PAGES[k];
+        song.g[G_DSYNC] = 1;
+        page_desc(pg, 0, &vp);
+        check(vp == &song.g[G_DMS], "FREE: the DLY page's TIME knob sets the ms");
+        song.g[G_DSYNC] = 0;
+        page_desc(pg, 0, &vp);
+        check(vp == &song.g[G_DTIME], "SYNC: it sets the note value, as SLOOP");
     }
 
     /* 6. the cost: 20 s of the self-oscillating loop, DIGI vs TAPE (one track, so the delay weighs) */

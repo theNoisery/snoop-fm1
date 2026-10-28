@@ -41,7 +41,7 @@
                                                 * so the format and its size do not change */
 _Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u,
                "the globals a project holds, then G_DRDLY (then 2.6's GLO > MIDI: settings of the FM-1)");
-_Static_assert(G_FXFADE == G_CLKOUT + 1u && G_DMODE == G_FXFADE + 1u && G_COUNT == G_DDRIVE + 1u,
+_Static_assert(G_FXFADE == G_CLKOUT + 1u && G_DMODE == G_FXFADE + 1u && G_COUNT == G_DMS + 1u && DLY_MS_MAX < 2048,
                "G_FXFADE (2.7.2), a setting of the FM-1; then SNOOP's delay (in a project: proj_dly_put)");
 #define PROJ_NC6 ((uint32_t)P_ITYPE)           /* format 6: the parameters kept in 16 bits, P_LEVEL .. P_VLEAD (as 5), */
 #define PROJ_NX6 ((uint32_t)(P_E0 - P_ITYPE))  /* the 2.6 ones in a byte (0..127), then P_E0 .. P_E7 */
@@ -418,22 +418,30 @@ static void proj_tx_get(const project_t *p)
         song.g[ID[i]] = (int16_t)clamp(v[i], GP[ID[i]].min, GP[ID[i]].max);
 }
 
-/* (SNOOP) FX > DLY 2 in a project, in the slots of two GO / selector globals no project applies (G_LOAD, G_SLOT: SLOOP
- * saves 0 and 1..4 there and never loads them): g[G_LOAD] = 0x4000 | MODE << 7 | WOW, g[G_SLOT] = 0x4000 | DRIVE. Without
- * the 0x4000 (a SLOOP project): DIGI and the defaults */
+/* (SNOOP) FX > DLY 2 / 3 in a project, in the slots of two GO / selector globals no project applies (G_LOAD, G_SLOT:
+ * SLOOP saves 0 and 1..4 there and never loads them): g[G_LOAD] = 0x4000 | MS >> 7 << 10 | SYNC << 9 | PING << 8 |
+ * MODE << 7 | WOW, g[G_SLOT] = 0x4000 | (MS & 127) << 7 | DRIVE. Without the 0x4000 (a SLOOP project): DIGI and the
+ * defaults; MS 0 (saved by SNOOP 0.2): its default */
 #define DLY_MARK 0x4000
 UI_SMALL static void proj_dly_put(project_t *p)
 {
-    p->g[G_LOAD] = (int16_t)(DLY_MARK | ((uint32_t)song.g[G_DMODE] & 1u) << 7 | ((uint32_t)song.g[G_DWOW] & 127u));
-    p->g[G_SLOT] = (int16_t)(DLY_MARK | ((uint32_t)song.g[G_DDRIVE] & 127u));
+    uint32_t ms = (uint32_t)song.g[G_DMS] & 2047u;
+    p->g[G_LOAD] = (int16_t)(DLY_MARK | (ms >> 7) << 10 | ((uint32_t)song.g[G_DSYNC] & 1u) << 9 |
+                             ((uint32_t)song.g[G_DPING] & 1u) << 8 | ((uint32_t)song.g[G_DMODE] & 1u) << 7 |
+                             ((uint32_t)song.g[G_DWOW] & 127u));
+    p->g[G_SLOT] = (int16_t)(DLY_MARK | (ms & 127u) << 7 | ((uint32_t)song.g[G_DDRIVE] & 127u));
 }
 static void proj_dly_get(const project_t *p)
 {
     uint32_t a = (uint16_t)p->g[G_LOAD], b = (uint16_t)p->g[G_SLOT];
-    int ok = (a & ~0xFFu) == DLY_MARK && (b & ~0x7Fu) == DLY_MARK;
+    int ok = (a & 0xC000u) == DLY_MARK && (b & 0xC000u) == DLY_MARK;
+    uint32_t ms = ok ? ((a >> 10) & 15u) << 7 | ((b >> 7) & 127u) : 0u;
     song.g[G_DMODE] = (int16_t)(ok ? (a >> 7) & 1u : (uint32_t)GP[G_DMODE].def);
     song.g[G_DWOW] = (int16_t)(ok ? a & 127u : (uint32_t)GP[G_DWOW].def);
     song.g[G_DDRIVE] = (int16_t)(ok ? b & 127u : (uint32_t)GP[G_DDRIVE].def);
+    song.g[G_DPING] = (int16_t)(ok ? (a >> 8) & 1u : (uint32_t)GP[G_DPING].def);
+    song.g[G_DSYNC] = (int16_t)(ok ? (a >> 9) & 1u : (uint32_t)GP[G_DSYNC].def);
+    song.g[G_DMS] = (int16_t)(ms ? clamp((int32_t)ms, GP[G_DMS].min, GP[G_DMS].max) : GP[G_DMS].def);
 }
 
 /* (2.7) the DRUMS screen's SOUND page in a project: each sound's TUNE (4 bits) and DECAY (3 bits), two's complement

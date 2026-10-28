@@ -9,6 +9,7 @@ static const char *const N_LSYNC[] = {"OFF", "4BAR", "2BAR", "1BAR", "1/2", "1/4
 static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
 static const char *const N_DMODE[] = {"DIGI", "TAPE"};   /* SNOOP: the delay (fx.c) */
+static const char *const N_DSYNC[] = {"SYNC", "FREE"};
 /* GLO > MIDI (2.6): a synth track's MIDI channel, and the other channels */
 static const char *const N_SECT[] = {"A", "B", "C", "D", 0};   /* SAVE > SECTION (2.7): the slot as its section */
 static const char *const N_MCH[] = {"OFF", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"};
@@ -207,7 +208,10 @@ static const param_desc_t GP[G_COUNT] = {
     [G_FXFADE] = PD("FADE", F_INT, 0, 15, 0),
     [G_DMODE] = PE("MODE", N_DMODE, 0),           /* SNOOP: DIGI (SLOOP's delay) / TAPE (fx.c tape_*) */
     [G_DWOW] = PD("WOW", F_PCT, 0, 127, 40),      /* TAPE: wow, flutter and drift of the tape speed */
-    [G_DDRIVE] = PD("DRIVE", F_PCT, 0, 127, 32),  /* TAPE: how hard the echoes hit the tape (saturation) */     /* 2.7.2: the punch-in FX fade (FX layer SELECT), 0 off .. 15 (punch.c) */
+    [G_DDRIVE] = PD("DRIVE", F_PCT, 0, 127, 32),  /* TAPE: how hard the echoes hit the tape (saturation) */
+    [G_DPING] = PE("PING", N_ONOFF, 0),           /* SNOOP 0.3: ping-pong (fx.c) */
+    [G_DSYNC] = PE("SYNC", N_DSYNC, 0),           /* SNOOP 0.3: SYNC the note values, FREE milliseconds */
+    [G_DMS] = {"TIME", F_INT, 1, DLY_MS_MAX, 375, 0, "ms"},   /* SNOOP 0.3: FREE's time (PING: up to half of it) */     /* 2.7.2: the punch-in FX fade (FX layer SELECT), 0 off .. 15 (punch.c) */
 };
 
 static const param_desc_t DRUM_KIT_DESC = PE("KIT", DRUM_KIT_NAMES, 0);
@@ -418,7 +422,8 @@ static const page_t PAGES[] = {
     {"INSERT", FAM_FX, SC_TRACK, GR_INS, {P_ITYPE, P_IA, P_IB, P_IC}},   /* 2.6 (Felucca 1.5): the track's INSERT (fx.c), */
     {"INSERT 2", FAM_FX, SC_TRACK, GR_INS, {P_IMIX, 0xFF, 0xFF, 0xFF}},  /* .. its dry / wet; the drum track too */
     {"DLY", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX}},
-    {"DLY 2", FAM_FX, SC_GLOBAL, GR_NONE, {G_DMODE, G_DWOW, G_DDRIVE, 0xFF}},   /* SNOOP: TAPE */
+    {"DLY 2", FAM_FX, SC_GLOBAL, GR_NONE, {G_DMODE, G_DWOW, G_DDRIVE, G_DPING}},   /* SNOOP: TAPE, ping-pong */
+    {"DLY 3", FAM_FX, SC_GLOBAL, GR_NONE, {G_DSYNC, G_DMS, 0xFF, 0xFF}},           /* SNOOP 0.3: FREE time in ms */
     {"REV/CHO", FAM_FX, SC_GLOBAL, GR_NONE, {G_RSIZE, G_RDAMP, G_CRATE, G_CDEPTH}},
     {"SEL", FAM_SCL, SC_TRACK, GR_SCALE, {P_ROOT, P_SCALE, P_QUANT, P_CHORD}},
     {"SEL 2", FAM_SCL, SC_TRACK, GR_SCALE, {P_TRANS, P_STRUM, P_VLEAD, 0xFF}},   /* (2.4: the chords played) */
@@ -486,6 +491,8 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
         return 0;
     }
     if (pg->scope == SC_GLOBAL) {
+        if (id == G_DTIME && song.g[G_DSYNC])           /* (SNOOP) FREE: the DLY page's TIME sets the ms */
+            id = G_DMS;
         *valp = &song.g[id];
         return gdesc(id);
     }
