@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: |
           grep -E "^app |flash is full|RAM|pool|lowram|  FAIL " build/log.txt | head -12 | while read -r l; do echo "::notice title=build::$l"; done
-          grep -E "^regress: [0-9]+ golden" build/tests.txt | while read -r l; do echo "::notice title=tests::$l"; done || true
+          grep -E "^regress: [0-9]+ golden|^target: .*(OVER|FAIL|note:)" build/tests.txt | while read -r l; do echo "::notice title=tests::$l"; done || true
           awk '/^== /{h=$0} /FAIL|[1-9][0-9]* failed|over budget|Assertion|error:/{print h " -> " $0}' build/tests.txt \
             | grep -v " 0 CPU entries over budget" | head -15 | while read -r l; do echo "::warning title=failed::$l"; done || true
       - name: Name the package
