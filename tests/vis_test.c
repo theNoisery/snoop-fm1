@@ -119,6 +119,17 @@ int main(int argc, char **argv)
             printf("  HEXAGON: %u bounces off the walls in 4 s\n", vs.bounces);
             check(vs.bounces > 20u, "HEXAGON: the balls reach the walls and bounce off them");
         }
+        if (st == 5u) {                             /* TAPE: the red dot follows the MASTER knob, not the music */
+            static uint16_t a[240 * 240];
+            uint32_t m0 = song.master_q12, y, ya = 0, yb = 0;
+            song.master_q12 = 4096u; ui.force = 1; frames(4); memcpy(a, screen, sizeof a);
+            for (y = 20; y < 150u; y++) if (swap16(a[y * 240u + 232u]) == OP_RED && !ya) ya = y;
+            song.master_q12 = 1024u; ui.force = 1; frames(4);
+            for (y = 20; y < 150u; y++) if (swap16(screen[y * 240u + 232u]) == OP_RED && !yb) yb = y;
+            printf("  TAPE: the master's dot at row %u (knob full), %u (knob half)\n", ya, yb);
+            check(ya && yb > ya + 40u && yb < ya + 70u, "TAPE: the red slider shows the MASTER knob");
+            song.master_q12 = m0;
+        }
         if (st == 8u)
             check(vs.sm[0] > 300 && vs.sm[2] > 0, "TRACKS: the needles follow what the tracks play");
     }

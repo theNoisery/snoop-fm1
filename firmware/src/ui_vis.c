@@ -889,9 +889,9 @@ static void vis_tape(void)
     op_line(PX(127), PX(155), PX(127), PX(169), 340, OP_WHITE);
     op_line(PX(127), PX(169), PX(113), PX(169), 340, OP_WHITE);
     op_line(PX(113), PX(169), PX(113), PX(155), 340, OP_WHITE);
-    /* the master, on the right */
+    /* the MASTER knob, on the right (0.9.1: where the knob is, not what plays; main.c: master_q12 = k10^2 / 256) */
     {
-        int32_t y = 140 - vs.sm[4] * 110 / 1000;
+        int32_t k = (int32_t)vis_isqrt(song.master_q12 << 8), y = 140 - clamp(k, 0, 1023) * 114 / 1023;
         op_line(PX(232), PX(26), PX(232), PX(y), 256, OP_GREY);
         op_line(PX(232), PX(y), PX(232), PX(142), 330, OP_RED);
         op_disc(PX(232), PX(y), PX(4), OP_RED);
