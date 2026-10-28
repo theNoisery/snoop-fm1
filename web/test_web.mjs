@@ -1044,8 +1044,12 @@ async function editorDsyn() {
   if (hdr) {
     const kits = [...hdr.matchAll(/\{"([^"]*)", "[^"]*", (0x[0-9A-Fa-f]+|\d+), \{([\s\S]*?)\}\},/g)];
     const bytes = kits.flatMap((k) => [Number(k[2]), ...[...k[3].matchAll(/\{([^{}]*)\},/g)].flatMap((r) => r[1].split(",").map((x) => +x & 255))]);
-    ok(kits.length === 32 && js(kits.map((k) => k[1])) === js(E.DSYN_MOCK_NAMES) && js(Array.from(raw)) === js(bytes),
-      "dsyn: the mock's 32 kits == build/gen/felucca_drumkits.h");
+    /* (SNOOP) the kits taken out: the header has the kept ones, DS_SLOT maps the 32 numbers to them (255: out) */
+    const slot = ((/DS_SLOT\[DS_NKITS\] = \{([^}]*)\}/.exec(hdr) || [])[1] || "").split(",").map((x) => +x);
+    const keep = slot.length === 32 ? slot.map((v, i) => (v === 255 ? -1 : i)).filter((i) => i >= 0) : [...Array(32).keys()];
+    const want = keep.flatMap((i) => Array.from(raw.slice(i * 353, i * 353 + 353)));
+    ok(kits.length === keep.length && js(kits.map((k) => k[1])) === js(keep.map((i) => E.DSYN_MOCK_NAMES[i])) && js(want) === js(bytes),
+      `dsyn: the mock's kits == build/gen/felucca_drumkits.h (${keep.length} of 32 kept)`);
   }
   /* viewing never changes a value: decode / encode give every factory sound back */
   let same = true;
