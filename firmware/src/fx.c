@@ -40,6 +40,7 @@ static struct {
     int32_t mod;                         /* the wow + flutter of the last block's end, Q8 samples */
     uint8_t on;                          /* TAPE was running last block (else: start where TIME is, no sweep) */
     uint8_t blk;                         /* blocks to the next drift target */
+    int32_t v;                           /* (0.5) the head's speed, Q8 samples a sample (eased) */
 } tape;
 #define TAPE_WOW_INC ((uint32_t)(0.6 * 4294967296.0 * CTL / FS))    /* per block */
 #define TAPE_FLT_INC ((uint32_t)(6.7 * 4294967296.0 * CTL / FS))
@@ -236,11 +237,11 @@ static inline void master_pre(int32_t *l, int32_t *r)
 
 
 
-static uint32_t delay_samples(void)
+static uint32_t delay_samples(int ping)
 {
     uint32_t s = song.g[G_DSYNC] ? (uint32_t)song.g[G_DMS] * 441u / 10u   /* (SNOOP 0.3) FREE: ms */
                                  : dly_samples((uint32_t)song.g[G_DTIME]);
-    if (song.g[G_DPING] && s > PING_MAX)                /* (SNOOP 0.3) a bounce: half the buffer at most */
+    if (ping && s > PING_MAX)                           /* (SNOOP 0.3) a bounce: half the buffer at most */
         s = PING_MAX;
     return s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
 }
@@ -250,21 +251,76 @@ static uint32_t delay_samples(void)
 #define HALF0(v) ((v) >= 0 ? (v) >> 1 : -(-(v) >> 1))   /* v / 2 towards zero */
 #include "rev_plate.c"           /* (SNOOP 0.4) the reverb's PLATE and SPACE */
 static int32_t plt_l[CTL], plt_r[CTL];
+/* (SNOOP 0.5) no clicks when a knob turns (tests/click_test.c). Nothing here acts while the knobs are still: SLOOP's
+ * sound, bit for bit, the golden renders unchanged.
+ *  - FDBK, MIX, DRIVE: ramped over the block from the last block's value;
+ *  - DIGI's TIME: the old and the new read head crossfaded over XF_LEN samples (a change while one runs waits for it:
+ *    at most 12 ms late, never a jump);
+ *  - MODE, PING (the delay) and TYPE (the reverb): the return (and the delay's loop) ducked out in ~3 ms, switched,
+ *    back in ~6 ms;
+ *  - the chorus' read heads go on from where the last block left them (a DEPTH change no longer jumps them). */
+#define XF_LEN 512u
+static struct {
+    int32_t fb, dmix, tfb, tgin, tgout;  /* the last block's (ramps) */
+    uint32_t dl, xf_from;                /* DIGI: the read head in use; the one it fades from */
+    uint32_t xf_n;                       /* samples of the crossfade left */
+    int32_t duck, rduck;                 /* the delay's and the reverb's duck, Q15 (32767: none) */
+    uint8_t mode, ping, rtype;           /* what the DSP plays (the knobs' values once ducked out) */
+    int32_t ca1, cb1;                    /* the chorus' read heads at the end of the last block */
+    int32_t cdepth;                      /* the chorus' DEPTH as played: glides (a jump of its swing bends the pitch) */
+    uint8_t ok;                          /* the above hold values (else: take the knobs' at once) */
+} sm;
 static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet_l,
                      int32_t *wet_r, uint32_t n)
 {
-    uint32_t i, k, dl = delay_samples();
+    uint32_t i, k, dl;
     int32_t fb = song.g[G_DFDBK] * 230, col = 2000 + song.g[G_DCOLOR] * 240;
     if (thr_dly && fb < 89 * 230)                       /* ECHO THROW: FDBK at least 70 %, gliding with it (2.6) */
         fb += ((89 * 230 - fb) * thr_dly) >> 15;
     int32_t dmix = song.g[G_DMIX] * 258;
+    int32_t fb0, dfb, dmix0, ddmix, duck0, dduck;       /* (SNOOP 0.5) the ramps */
+    if (!sm.ok) {                                       /* (the first block: the knobs as they are) */
+        sm.ok = 1;
+        sm.fb = fb, sm.dmix = dmix, sm.duck = sm.rduck = 32767;
+        sm.mode = (uint8_t)(song.g[G_DMODE] != 0), sm.ping = (uint8_t)(song.g[G_DPING] != 0);
+        sm.rtype = (uint8_t)song.g[G_RTYPE];
+        sm.dl = delay_samples(sm.ping);
+        sm.xf_n = 0;
+        sm.ca1 = -1;
+        sm.cdepth = song.g[G_CDEPTH] * 6;
+    }
+    {   /* MODE / PING turned: duck out (128 samples), switch, duck back in (256) */
+        int want = (song.g[G_DMODE] != 0) != sm.mode || (song.g[G_DPING] != 0) != sm.ping;
+        duck0 = sm.duck;
+        if (want && !sm.duck) {
+            sm.mode = (uint8_t)(song.g[G_DMODE] != 0), sm.ping = (uint8_t)(song.g[G_DPING] != 0);
+            sm.dl = delay_samples(sm.ping), sm.xf_n = 0;    /* (the new structure from its own read head) */
+            fx.dly_lp = tape.lp = tape.lp2 = tape.dc = 0;   /* (no filter state left from the last time: it would start
+                                                         * in the loop mid-wave, a step its echoes repeat) */
+            want = 0;
+        }
+        sm.duck = want ? (sm.duck > 8192 ? sm.duck - 8192 : 0) : (sm.duck < 32767 - 4096 ? sm.duck + 4096 : 32767);
+        dduck = (sm.duck - duck0) >> CTL_LOG2;
+    }
+    dl = delay_samples(sm.ping);
+    if (sm.mode) {                                      /* TAPE: its head glides to TIME itself */
+        sm.dl = dl, sm.xf_n = 0;
+    } else if (dl != sm.dl && !sm.xf_n) {               /* DIGI, TIME turned: crossfade from the head in use */
+        sm.xf_from = sm.dl, sm.dl = dl, sm.xf_n = XF_LEN;
+    }
+    dl = sm.dl;
+    fb0 = sm.fb, dfb = (fb - fb0) >> CTL_LOG2, sm.fb = fb;
+    dmix0 = sm.dmix, ddmix = (dmix - dmix0) >> CTL_LOG2, sm.dmix = dmix;
     int32_t g = 17000 + song.g[G_RSIZE] * 104, lpk = 32767 - song.g[G_RDAMP] * 200;   /* loop gain (RT60 ~0.4..4 s), damping */
     int32_t frnd = rev_frz ? 128 : 0;                  /* FREEZE: what is in the lines stays there (below: no
                                                          * loss, rounded to nearest; 0: as always, bit for bit) */
     int32_t cdepth = song.g[G_CDEPTH] * 6;
+    if (sm.ok && cdepth != sm.cdepth)                   /* (SNOOP 0.5) DEPTH glides, 4 a block (the whole range in ~0.25 s) */
+        cdepth = sm.cdepth += cdepth > sm.cdepth + 4 ? 4 : cdepth < sm.cdepth - 4 ? -4 : cdepth - sm.cdepth;
     int32_t ca0, ca1, cb0, cb1, ma, mb, dca, dcb;
-    const int is_tape = song.g[G_DMODE] != 0, ping = song.g[G_DPING] != 0;   /* (SNOOP) */
+    const int is_tape = sm.mode, ping = sm.ping;        /* (SNOOP; 0.5: as the duck switched them) */
     int32_t t_fb = 0, t_m0 = 0, t_dm = 0, t_to = 0, t_gin = 4096, t_gout = 4096;
+    int32_t tfb0 = 0, dtfb = 0, tgin0 = 4096, dtgin = 0, tgout0 = 4096, dtgout = 0;
     if (is_tape) {
         int32_t w = song.g[G_DWOW], wow, flt;
         t_fb = (song.g[G_DFDBK] > 110 ? 110 : song.g[G_DFDBK]) * 328;   /* 0 .. 1.10, Q15 */
@@ -274,12 +330,18 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         t_gout = (2900 << 12) / (4096 + song.g[G_DDRIVE] * 48);   /* -3 dB (a self-oscillating loop stays under the
                                                                    * master's limiter), DRIVE half made up */
         t_to = (int32_t)dl << 8;
+        int fresh = !tape.on;
         if (!tape.on) {                                 /* coming on: the head where TIME is, the filters empty */
             tape.on = 1;
             tape.d = t_to;
+            tape.v = 0;
             tape.lp = tape.lp2 = tape.dc = tape.mod = 0;
             tape.drift = tape.drift_to = 0;
+            sm.tfb = t_fb, sm.tgin = t_gin, sm.tgout = t_gout;
         }
+        tfb0 = sm.tfb, dtfb = (t_fb - tfb0) >> CTL_LOG2, sm.tfb = t_fb;   /* (0.5) ramps */
+        tgin0 = sm.tgin, dtgin = (t_gin - tgin0) >> CTL_LOG2, sm.tgin = t_gin;
+        tgout0 = sm.tgout, dtgout = (t_gout - tgout0) >> CTL_LOG2, sm.tgout = t_gout;
         tape.wow_ph += TAPE_WOW_INC;
         tape.flt_ph += TAPE_FLT_INC;
         if (!tape.blk--) {                              /* a new drift target every 128 blocks (~0.1 s) */
@@ -293,14 +355,38 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         t_m0 = tape.mod;
         tape.mod = (int32_t)(((int64_t)(osc_sine(tape.wow_ph) + (tape.drift >> 1)) * wow) >> 15) +
                    (int32_t)(((int64_t)osc_sine(tape.flt_ph) * flt) >> 15) + wow + flt + (wow >> 1);   /* (>= 0) */
+        if (fresh)                                      /* (0.5) the wow's offset at once (ducked out), not swept in */
+            t_m0 = tape.mod;
         t_dm = (tape.mod - t_m0) >> CTL_LOG2;
     } else {
         tape.on = 0;
     }
     const uint32_t L0 = REV_LINE[0] + REV_MOD + 2u, B1 = L0, B2 = B1 + REV_LINE[1], B3 = B2 + REV_LINE[2];
-    const uint32_t rtype = (uint32_t)song.g[G_RTYPE];   /* (SNOOP 0.4) 0: ROOM, SLOOP's (below); 1 PLATE, 2 SPACE */
+    uint32_t rtype;                                     /* (SNOOP 0.4) 0: ROOM, SLOOP's (below); 1 PLATE, 2 SPACE */
+    int32_t rd0, drd;                                   /* (0.5) TYPE turned: the return ducked out, switched, back */
+    {
+        int want = (uint32_t)song.g[G_RTYPE] != sm.rtype;
+        rd0 = sm.rduck;
+        if (want && !sm.rduck) {
+            sm.rtype = (uint8_t)song.g[G_RTYPE], want = 0;
+            if (!sm.rtype) {                            /* back to ROOM: its diffusers too start empty (an old state */
+                memset(rev_ap, 0, sizeof rev_ap);       /* meeting the new would leave a step in its lines) */
+                fx.ap_i[0] = fx.ap_i[1] = 0;
+            }
+        }
+        sm.rduck = want ? (sm.rduck > 8192 ? sm.rduck - 8192 : 0) : (sm.rduck < 32767 - 4096 ? sm.rduck + 4096 : 32767);
+        drd = (sm.rduck - rd0) >> CTL_LOG2;
+        rtype = sm.rtype;
+    }
     if (rtype) {
-        plt_block(rev_in, plt_l, plt_r, n, rtype);
+        if (rd0 != 32767 || drd) {                      /* (0.5) switching: what goes in is ducked too */
+            static int32_t rin[CTL];
+            for (i = 0; i < n; i++)
+                rin[i] = mulq15(rev_in[i], rd0 + drd * (int32_t)i);
+            plt_block(rin, plt_l, plt_r, n, rtype);
+        } else {
+            plt_block(rev_in, plt_l, plt_r, n, rtype);
+        }
     } else if (plt.inited) {                            /* back to ROOM: its lines held the plate's */
         plt.inited = 0;
         memset(rev_line, 0, sizeof rev_line);
@@ -314,6 +400,9 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         m1 = osc_sine(fx.rev_ph);
         ca0 = (400 << 8) + ((s0 + 32768) * cdepth >> 8), ca1 = (400 << 8) + ((s1 + 32768) * cdepth >> 8);
         cb0 = (400 << 8) + ((32767 - s0) * cdepth >> 8), cb1 = (400 << 8) + ((32767 - s1) * cdepth >> 8);
+        if (sm.ca1 >= 0)                                /* (SNOOP 0.5) on from the last block's end (DEPTH turned: */
+            ca0 = sm.ca1, cb0 = sm.cb1;                 /* no jump; still: the same values, bit for bit) */
+        sm.ca1 = ca1, sm.cb1 = cb1;
         ma = (REV_MOD << 8) + ((m0 * REV_MOD) >> 7), mb = (REV_MOD << 8) + ((m1 * REV_MOD) >> 7);
         dca = (ca1 - ca0) >> CTL_LOG2, dcb = (cb1 - cb0) >> CTL_LOG2;
     }
@@ -330,7 +419,7 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             yr = (d0 + (((d1 - d0) * (r1 & 255)) >> 8)) << 1;
         }
         fx.cho_w++;
-        if (!is_tape && !ping) {
+        if (!is_tape && !ping && !sm.xf_n && duck0 == 32767 && !dduck && !dfb && !ddmix) {
         /* delay with a low-passed feedback (in the middle) */
         x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
         fx.dly_lp += mulq15(x - fx.dly_lp, col);
@@ -340,23 +429,40 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         x = mulq15(x << 1, dmix);
         yl += x;
         yr += x;
-        } else {                                        /* (SNOOP) TAPE and / or PING, see `tape` and PING_MAX above */
-            int32_t r, f, w, xr, gain = is_tape ? t_fb : fb, *lp1 = is_tape ? &tape.lp : &fx.dly_lp;
+        } else {                                        /* (SNOOP) TAPE and / or PING (see `tape` and PING_MAX above),
+                                                         * or a knob turning (0.5: the ramps, crossfade, duck) */
+            int32_t r, f, w, xr, gain = is_tape ? tfb0 + dtfb * (int32_t)i : fb0 + dfb * (int32_t)i,
+                    *lp1 = is_tape ? &tape.lp : &fx.dly_lp, dmx = dmix0 + ddmix * (int32_t)i,
+                    dk = duck0 + dduck * (int32_t)i, vin = dly_in[i] >> 1;
             if (is_tape) {
-                int32_t e = t_to - tape.d;
+                int32_t e = t_to - tape.d, want;
                 if (e) {                                /* the speed glides: 1/4096 of the way a sample (~93 ms), */
-                    int32_t s = ((e < 0 ? -e : e) >> 12) + 1;   /* at most 3/4 of a sample per sample */
-                    if (s > 192)
-                        s = 192;
-                    tape.d += e < 0 ? -s : s;
+                    want = ((e < 0 ? -e : e) >> 12) + 1;    /* at most 3/4 of a sample per sample */
+                    if (want > 192)
+                        want = 192;
+                    if (e < 0)
+                        want = -want;
+                } else {
+                    want = 0;
                 }
+                tape.v += want > tape.v + 2 ? 2 : want < tape.v - 2 ? -2 : want - tape.v;   /* (0.5: the speed eases in
+                                                         * and out, ~2 ms to full: a bend, not a kink) */
+                tape.d += tape.v;
                 r = t_m0 + t_dm * (int32_t)i;           /* the wow and flutter */
                 x = dly_tap(tape.d + r);
                 f = ping ? dly_tap(2 * tape.d + r) : x; /* (PING: the right, two echoes back) */
             } else {
                 x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
-                f = dly_buf[(fx.dly_w - 2u * dl) & (DLY_LEN - 1u)];   /* (PING only here) */
+                f = ping ? dly_buf[(fx.dly_w - 2u * dl) & (DLY_LEN - 1u)] : x;
+                if (sm.xf_n) {                          /* (0.5) TIME turned: from the old head to the new */
+                    int32_t wt = (int32_t)(sm.xf_n * (32768u / XF_LEN)), xo = dly_buf[(fx.dly_w - sm.xf_from) & (DLY_LEN - 1u)];
+                    x += mulq15(xo - x, wt);
+                    f = ping ? f + mulq15(dly_buf[(fx.dly_w - 2u * sm.xf_from) & (DLY_LEN - 1u)] - f, wt) : x;
+                    sm.xf_n--;
+                }
             }
+            if (dk < 32767)                             /* (0.5) MODE / PING switching: the loop and the return */
+                x = mulq15(x, dk), f = mulq15(f, dk);
             *lp1 += mulq15(f - *lp1, col);              /* COLR */
             f = *lp1;
             if (ping) {
@@ -367,17 +473,22 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
                 tape.dc += ((f << 8) - tape.dc) >> 8;   /* the high-pass' low-pass: one pole at ~27 Hz */
                 f -= tape.dc >> 8;
             }
+            if (dk < 32767)                             /* (0.5) and after the filters: at the switch nothing of */
+                f = mulq15(f, dk);                      /* their state reaches the line */
             xr = 0;
             if (ping)
                 f = xr = mulq15(f, gain);               /* the right: g y(2T); the loop: g^2 y(2T) */
+            if (dk < 32767)                             /* (0.5) .. and what goes in: DIGI and TAPE write it at their */
+                vin = mulq15(vin, dk);                  /* own level, a switch would leave a step in the line */
             if (is_tape) {
-                w = tape_sat(((clamp(dly_in[i] >> 1, -49152, 49152) * (t_gin >> 2)) >> 10) + mulq15(f, gain));   /* DRIVE */
-                x = mulq15(mulq15(x << 1, t_gout << 3), dmix);
-                xr = mulq15(mulq15(xr << 1, t_gout << 3), dmix);
+                int32_t gi = tgin0 + dtgin * (int32_t)i, go = tgout0 + dtgout * (int32_t)i;
+                w = tape_sat(((clamp(vin, -49152, 49152) * (gi >> 2)) >> 10) + mulq15(f, gain));   /* DRIVE */
+                x = mulq15(mulq15(x << 1, go << 3), dmx);
+                xr = mulq15(mulq15(xr << 1, go << 3), dmx);
             } else {
-                w = clamp((dly_in[i] >> 1) + mulq15(f, gain), -32768, 32767);
-                x = mulq15(x << 1, dmix);
-                xr = mulq15(xr << 1, dmix);
+                w = clamp(vin + mulq15(f, gain), -32768, 32767);
+                x = mulq15(x << 1, dmx);
+                xr = mulq15(xr << 1, dmx);
             }
             dly_buf[fx.dly_w & (DLY_LEN - 1u)] = (int16_t)w;
             fx.dly_w++;
@@ -385,6 +496,10 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             yr += ping ? xr : x;
         }
         if (rtype) {                                    /* (SNOOP 0.4) PLATE / SPACE: the block's return */
+            if (rd0 != 32767 || drd) {
+                int32_t rd = rd0 + drd * (int32_t)i;
+                plt_l[i] = mulq15(plt_l[i], rd), plt_r[i] = mulq15(plt_r[i], rd);
+            }
             wet_l[i] = yl + plt_l[i];
             wet_r[i] = yr + plt_r[i];
             rev_l[i] = plt_l[i];
@@ -393,6 +508,8 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         }
         /* reverb: two diffusers, then the four lines */
         a = mulq15(rev_in[i], 13000);
+        if (rd0 != 32767 || drd)                        /* (SNOOP 0.5) switching TYPE: in and out ducked */
+            a = mulq15(a, rd0 + drd * (int32_t)i);
         {
             int16_t *c = rev_ap;
             for (k = 0; k < 2u; k++) {
@@ -439,6 +556,10 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             if (++fx.line_i[1] >= REV_LINE[1]) fx.line_i[1] = 0;
             if (++fx.line_i[2] >= REV_LINE[2]) fx.line_i[2] = 0;
             if (++fx.line_i[3] >= REV_LINE[3]) fx.line_i[3] = 0;
+        }
+        if (rd0 != 32767 || drd) {                     /* (SNOOP 0.5) TYPE turned: ROOM ducked in / out */
+            int32_t rd = rd0 + drd * (int32_t)i;
+            o0 = mulq15(o0, rd), o1 = mulq15(o1, rd), o2 = mulq15(o2, rd), o3 = mulq15(o3, rd);
         }
         wet_l[i] = yl + o0 + o2;
         wet_r[i] = yr + o1 - o3;

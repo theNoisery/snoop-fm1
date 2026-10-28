@@ -42,12 +42,17 @@ static const struct { uint8_t line; int8_t sign; uint16_t at; } PLT_TAP[14] = {
     {5, 1, 353}, {5, 1, 3627}, {6, -1, 1228}, {7, 1, 2673}, {9, -1, 2111}, {10, -1, 335}, {11, -1, 121},
 };
 
+static const uint16_t PLT_TAP_SC[14] = {   /* (0.5) the taps at PLT_FS, ahead of time (no division a block) */
+    PLT_SC(266), PLT_SC(2974), PLT_SC(1913), PLT_SC(1996), PLT_SC(1990), PLT_SC(187), PLT_SC(1066),
+    PLT_SC(353), PLT_SC(3627), PLT_SC(1228), PLT_SC(2673), PLT_SC(2111), PLT_SC(335), PLT_SC(121),
+};
 typedef struct { int16_t *b; uint16_t cap, w; } pl_line_t;
 static struct {
     pl_line_t ln[13];
-    uint16_t len[13];                        /* each line's length now (SIZE) */
-    uint16_t tap[14];
-    int32_t size;                            /* SIZE now, Q15 (glides to the knob) */
+    int32_t lq[13], tq[14];                  /* (0.5) each line's length (12: the pre-delay) and each tap now, Q8 samples:
+                                              * they glide to SIZE's (and PRE's) whole samples, 1/8 of a sample a sample at
+                                              * most, read in between while they move (a sweep, no click); still, they
+                                              * sit on whole samples: the sound as 0.4's */
     int32_t bw, lp[2], hp[2], tail[2];       /* the band limit; each half's damping, high-pass (Q8 more), output */
     int32_t last_l, last_r;                  /* the previous 22 kHz output (the interpolation) */
     uint32_t ph[2], rnd;
@@ -72,13 +77,33 @@ static inline void plt_wr(pl_line_t *l, int32_t v)
 static inline int32_t plt_rdq(const pl_line_t *l, int32_t back_q8)        /* fractional, Q8 */
 {
     uint32_t b = (uint32_t)back_q8 >> 8;
-    int32_t a = plt_rd(l, b), c = plt_rd(l, b + 1u);
+    int32_t a = plt_rd(l, b), c;
+    if (!(back_q8 & 255))                               /* (on a whole sample: no interpolation, no loss) */
+        return a;
+    c = plt_rd(l, b + 1u);
     return a + (((c - a) * (back_q8 & 255)) >> 8);
 }
-/* an all-pass of length len: v = x - g z, y = z + g v */
-static inline int32_t plt_ap(pl_line_t *l, uint32_t len, int32_t x, int32_t g)
+/* (0.5) a length's glide over a block of PLT ticks: to `want` (whole samples), at most 1/8 sample a tick; *inc per tick */
+#define PLT_TICKS (CTL / 2)
+static inline void plt_glide(int32_t *q, uint32_t want, int32_t *inc)
 {
-    int32_t z = plt_rd(l, len), v = x - plt_mul(z, g);
+    int32_t d = ((int32_t)want << 8) - *q;
+    if (*q < 0 || d == 0) {                             /* (the first block, or there) */
+        *q = (int32_t)want << 8, *inc = 0;
+        return;
+    }
+    if (d > 32 * PLT_TICKS) d = 32 * PLT_TICKS;
+    if (d < -32 * PLT_TICKS) d = -32 * PLT_TICKS;
+    if (d < PLT_TICKS && d > -PLT_TICKS) {              /* (the last 1/16 sample: at once) */
+        *q += d, *inc = 0;
+        return;
+    }
+    *inc = d / PLT_TICKS;                               /* (the end of the block: q + inc x PLT_TICKS) */
+}
+/* an all-pass of length len (Q8; mv: lengths are moving, else len is on a whole sample): v = x - g z, y = z + g v */
+static inline int32_t plt_ap(pl_line_t *l, int32_t len, int32_t x, int32_t g, int mv)
+{
+    int32_t z = mv ? plt_rdq(l, len) : plt_rd(l, (uint32_t)len >> 8), v = x - plt_mul(z, g);
     plt_wr(l, v);
     return z + plt_mul(v, g);
 }
@@ -105,10 +130,12 @@ static void plt_init(void)
     }
     memset(rev_line, 0, sizeof rev_line);
     memset(plt_ext, 0, sizeof plt_ext);
-    memset(plt.len, 0, sizeof plt.len);
+    for (i = 0; i < 13u; i++)
+        plt.lq[i] = -1;
+    for (i = 0; i < 14u; i++)
+        plt.tq[i] = -1;
     plt.bw = plt.lp[0] = plt.lp[1] = plt.hp[0] = plt.hp[1] = plt.tail[0] = plt.tail[1] = 0;
     plt.last_l = plt.last_r = 0;
-    plt.size = -1;
     plt.modg = 32768;
     plt.inited = 1;
 }
@@ -125,11 +152,87 @@ static void plt_freeze_halve(void)
     plt.tail[0] = HALF0(plt.tail[0]), plt.tail[1] = HALF0(plt.tail[1]);
 }
 
+/* (0.5) the ticks of a block; mv constant at each call (the compiler makes two loops: the still one reads whole samples,
+ * as 0.4's; the moving one the gliding lengths in between) */
+typedef struct { int32_t decay, dd2, damp, gain; int space, frz; int32_t m0[2], dm[2]; } plt_k_t;
+#define LQ(k) (mv ? plt.lq[k] + li[k] * j : (int32_t)(ib[k] << 8))
+#define PRD(ln, k) (mv ? plt_rdq(ln, plt.lq[k] + li[k] * j) : plt_rd(ln, ib[k]))
+#define TRD(ln, k) (mv ? plt_rdq(ln, plt.tq[k] + ti[k] * j) : plt_rd(ln, tb[k]))
+#define PLT_RUN_BODY \
+    uint32_t i, k, ib[13], tb[14];                                                                         \
+    const int32_t decay = c->decay, dd2 = c->dd2, damp = c->damp;                                          \
+    for (k = 0; k < 13u; k++)                                                                              \
+        ib[k] = (uint32_t)plt.lq[k] >> 8;                                                                  \
+    for (k = 0; k < 14u; k++)                                                                              \
+        tb[k] = (uint32_t)plt.tq[k] >> 8;                                                                  \
+    for (i = 0; i < n; i += 2u) {                                                                          \
+        int32_t x, y, l, r, t0, t1, j = (int32_t)(i >> 1);                                                 \
+        /* in: a pair averaged, the band limit, the pre-delay, the four input all-passes */                \
+        x = (in[i] + in[i + 1u]) >> 1;                                                                     \
+        x = mulq15(x < -98304 ? -98304 : x > 98304 ? 98304 : x, 8000);                                     \
+        plt.bw += plt_mul(x - plt.bw, c->space ? 22000 : 29000);                                           \
+        plt_wr(&plt.ln[12], plt.bw);                                                                       \
+        x = PRD(&plt.ln[12], 12);                                                                          \
+        x = plt_ap(&plt.ln[0], LQ(0), x, 24576, mv);    /* 0.75 */                                         \
+        x = plt_ap(&plt.ln[1], LQ(1), x, 24576, mv);                                                       \
+        x = plt_ap(&plt.ln[2], LQ(2), x, 20480, mv);    /* 0.625 */                                        \
+        x = plt_ap(&plt.ln[3], LQ(3), x, 20480, mv);                                                       \
+        /* the tank: each half takes the other's tail of the last sample */                                \
+        t0 = plt.tail[1], t1 = plt.tail[0];                                                                \
+        for (k = 0; k < 2u; k++) {                                                                         \
+            uint32_t b = k ? 8u : 4u;                   /* 4..7 the left half, 8..11 the right */          \
+            int32_t z, vv, back = LQ(b) + c->m0[k] + c->dm[k] * j + (PLT_MOD_MAX << 8);                    \
+            y = x + plt_mul(k ? t1 : t0, decay);                                                           \
+            /* the modulated all-pass (Dattorro's -0.7: the sign as his) */                                \
+            z = plt_rdq(&plt.ln[b], back < (2 << 8) ? 2 << 8 : back);                                      \
+            vv = y + plt_mul(z, 22938);                                                                    \
+            plt_wr(&plt.ln[b], vv);                                                                        \
+            y = z - plt_mul(vv, 22938);                                                                    \
+            plt_wr(&plt.ln[b + 1u], y);                 /* the long delay */                               \
+            y = PRD(&plt.ln[b + 1u], b + 1u);                                                              \
+            if (!c->frz) {                                                                                 \
+                plt.lp[k] += plt_mul(y - plt.lp[k], damp);                                                 \
+                plt.hp[k] += ((plt.lp[k] << 8) - plt.hp[k]) >> 8;   /* (~14 Hz) */                         \
+                y = plt.lp[k] - (plt.hp[k] >> 8);                                                          \
+            }                                                                                              \
+            y = plt_mul(y, decay);                                                                         \
+            y = plt_ap(&plt.ln[b + 2u], LQ(b + 2u), y, dd2, mv);   /* decay diffusion 2 */                 \
+            plt_wr(&plt.ln[b + 3u], y);                                                                    \
+            plt.tail[k] = PRD(&plt.ln[b + 3u], b + 3u);                                                    \
+        }                                                                                                  \
+        /* the taps */                                                                                     \
+        l = r = 0;                                                                                         \
+        for (k = 0; k < 7u; k++) {                                                                         \
+            int32_t a = TRD(&plt.ln[PLT_TAP[k].line], k), e = TRD(&plt.ln[PLT_TAP[k + 7u].line], k + 7u);  \
+            l += PLT_TAP[k].sign > 0 ? a : -a;                                                             \
+            r += PLT_TAP[k + 7u].sign > 0 ? e : -e;                                                        \
+        }                                                                                                  \
+        l = mulq15(l, c->gain), r = mulq15(r, c->gain);                                                    \
+        out_l[i] = (plt.last_l + l) >> 1, out_r[i] = (plt.last_r + r) >> 1;   /* back to 44.1 kHz */       \
+        out_l[i + 1u] = l, out_r[i + 1u] = r;                                                              \
+        plt.last_l = l, plt.last_r = r;                                                                    \
+    }
+#define PLT_RUN_FN(NAME, MV)                                                                                 \
+static void NAME(const int32_t *in, int32_t *out_l, int32_t *out_r, uint32_t n, const plt_k_t *c, const int32_t *li, \
+                 const int32_t *ti)                                                                         \
+{                                                                                                           \
+    const int mv = MV;                                                                                      \
+    PLT_RUN_BODY                                                                                            \
+}
+PLT_RUN_FN(plt_run_still, 0)   /* still: whole samples (0.4's loop) */
+PLT_RUN_FN(plt_run_move, 1)    /* a length gliding: fractional reads */
+#undef PLT_RUN_FN
+#undef PLT_RUN_BODY
+#undef LQ
+#undef PRD
+#undef TRD
+
+
 /* one block (n even, CTL) of PLATE (type 1) or SPACE (2): the mono send in, the stereo return out */
 static void plt_block(const int32_t *in, int32_t *out_l, int32_t *out_r, uint32_t n, uint32_t type)
 {
     const int space = type == 2u, frz = rev_frz != 0;
-    int32_t v = song.g[G_RSIZE], decay, dd2, damp, mod, size_to, pre, m0[2], m1[2], dm[2], gain;
+    int32_t v = song.g[G_RSIZE], decay, dd2, damp, mod, size_to, pre, m0[2], m1[2], dm[2], gain, li[13], ti[14], mv;
     uint32_t i, k;
     if (!plt.inited || plt.type != type) {
         plt_init();
@@ -151,24 +254,20 @@ static void plt_block(const int32_t *in, int32_t *out_l, int32_t *out_r, uint32_
     pre = song.g[G_RPRE] * PLT_PRE_MAX / 100;           /* ms -> samples */
     if (pre < 1)
         pre = 1;
-    /* SIZE: glides; the lengths and taps follow, one sample a block at most each */
-    if (plt.size < 0)
-        plt.size = size_to;
-    plt.size += (size_to - plt.size) >> 3;
-    for (k = 0; k < 12u; k++) {
-        uint32_t want = k < 4u ? PLT_LEN[k] : (PLT_LEN[k] * (uint32_t)plt.size) >> 15;
-        if (want < 4u) want = 4u;
-        if (plt.len[k] == 0 || plt.len[k] > plt.ln[k].cap - 2u)
-            plt.len[k] = (uint16_t)want;
-        else if (want > plt.len[k])
-            plt.len[k]++;
-        else if (want < plt.len[k])
-            plt.len[k]--;
+    /* SIZE, PRE: each length and tap glides to its whole samples (plt_glide) */
+    for (k = 0; k < 13u; k++) {
+        uint32_t want = k == 12u ? (uint32_t)pre : k < 4u ? PLT_LEN[k] : (PLT_LEN[k] * (uint32_t)size_to) >> 15;
+        if (want < 4u && k != 12u) want = 4u;
+        plt_glide(&plt.lq[k], want, &li[k]);
     }
     for (k = 0; k < 14u; k++) {
-        uint32_t t = ((uint32_t)PLT_SC(PLT_TAP[k].at) * (uint32_t)plt.size) >> 15, L = plt.len[PLT_TAP[k].line];
-        plt.tap[k] = (uint16_t)(t >= L ? L - 1u : t < 1u ? 1u : t);
+        uint32_t L = ((uint32_t)PLT_LEN[PLT_TAP[k].line] * (uint32_t)size_to) >> 15;
+        uint32_t t = ((uint32_t)PLT_TAP_SC[k] * (uint32_t)size_to) >> 15;
+        if (L < 4u) L = 4u;
+        plt_glide(&plt.tq[k], t >= L ? L - 1u : t < 1u ? 1u : t, &ti[k]);
     }
+    for (k = 0, mv = 0; k < 14u; k++)                   /* still (the usual case): whole-sample reads, as 0.4 */
+        mv |= (k < 13u ? li[k] | (plt.lq[k] & 255) : 0) | ti[k] | (plt.tq[k] & 255);
     /* the modulation: two sines (PLATE: one, a quarter turn apart), + SPACE's drift; Q8 samples, at both block ends */
     for (k = 0; k < 2u; k++)                            /* (3/4 the sine, 1/4 the drift: within +-mod) */
         m0[k] = (int32_t)(((int64_t)osc_sine(plt.ph[k]) * mod * 3) >> 17) + (space ? (plt.drift * mod) >> 15 : 0);
@@ -185,51 +284,15 @@ static void plt_block(const int32_t *in, int32_t *out_l, int32_t *out_r, uint32_
         dm[k] = (m1[k] - m0[k]) / (int32_t)(n / 2u);
     }
     gain = space ? 20500 : 27000;                       /* (the first 0.5 s of the return as loud as ROOM's, the defaults) */
-    for (i = 0; i < n; i += 2u) {
-        int32_t x, y, l, r, t0, t1, j = (int32_t)(i >> 1);
-        /* in: a pair averaged, the band limit, the pre-delay, the four input all-passes */
-        x = (in[i] + in[i + 1u]) >> 1;
-        x = mulq15(x < -98304 ? -98304 : x > 98304 ? 98304 : x, 8000);
-        plt.bw += plt_mul(x - plt.bw, space ? 22000 : 29000);
-        plt_wr(&plt.ln[12], plt.bw);
-        x = plt_rd(&plt.ln[12], (uint32_t)pre);
-        x = plt_ap(&plt.ln[0], plt.len[0], x, 24576);   /* 0.75 */
-        x = plt_ap(&plt.ln[1], plt.len[1], x, 24576);
-        x = plt_ap(&plt.ln[2], plt.len[2], x, 20480);   /* 0.625 */
-        x = plt_ap(&plt.ln[3], plt.len[3], x, 20480);
-        /* the tank: each half takes the other's tail of the last sample */
-        t0 = plt.tail[1], t1 = plt.tail[0];
-        for (k = 0; k < 2u; k++) {
-            uint32_t b = k ? 8u : 4u;                   /* 4..7 the left half, 8..11 the right */
-            int32_t z, vv, back = ((int32_t)plt.len[b] << 8) + m0[k] + dm[k] * j + (PLT_MOD_MAX << 8);
-            y = x + plt_mul(k ? t1 : t0, decay);
-            /* the modulated all-pass (Dattorro's -0.7: the sign as his) */
-            z = plt_rdq(&plt.ln[b], back < (2 << 8) ? 2 << 8 : back);
-            vv = y + plt_mul(z, 22938);
-            plt_wr(&plt.ln[b], vv);
-            y = z - plt_mul(vv, 22938);
-            plt_wr(&plt.ln[b + 1u], y);                 /* the long delay */
-            y = plt_rd(&plt.ln[b + 1u], plt.len[b + 1u]);
-            if (!frz) {
-                plt.lp[k] += plt_mul(y - plt.lp[k], damp);
-                plt.hp[k] += ((plt.lp[k] << 8) - plt.hp[k]) >> 8;   /* (~14 Hz) */
-                y = plt.lp[k] - (plt.hp[k] >> 8);
-            }
-            y = plt_mul(y, decay);
-            y = plt_ap(&plt.ln[b + 2u], plt.len[b + 2u], y, dd2);   /* decay diffusion 2 */
-            plt_wr(&plt.ln[b + 3u], y);
-            plt.tail[k] = plt_rd(&plt.ln[b + 3u], plt.len[b + 3u]);
-        }
-        /* the taps */
-        l = r = 0;
-        for (k = 0; k < 7u; k++) {
-            int32_t a = plt_rd(&plt.ln[PLT_TAP[k].line], plt.tap[k]), c = plt_rd(&plt.ln[PLT_TAP[k + 7u].line], plt.tap[k + 7u]);
-            l += PLT_TAP[k].sign > 0 ? a : -a;
-            r += PLT_TAP[k + 7u].sign > 0 ? c : -c;
-        }
-        l = mulq15(l, gain), r = mulq15(r, gain);
-        out_l[i] = (plt.last_l + l) >> 1, out_r[i] = (plt.last_r + r) >> 1;   /* back to 44.1 kHz */
-        out_l[i + 1u] = l, out_r[i + 1u] = r;
-        plt.last_l = l, plt.last_r = r;
+    {
+        plt_k_t c = {decay, dd2, damp, gain, space, frz, {m0[0], m0[1]}, {dm[0], dm[1]}};
+        if (mv)
+            plt_run_move(in, out_l, out_r, n, &c, li, ti);   /* a length gliding: fractional reads */
+        else
+            plt_run_still(in, out_l, out_r, n, &c, li, ti);  /* still: whole samples (0.4's loop) */
     }
+    for (k = 0; k < 13u; k++)                           /* the glides: where the block left them */
+        plt.lq[k] += li[k] * (int32_t)PLT_TICKS;
+    for (k = 0; k < 14u; k++)
+        plt.tq[k] += ti[k] * (int32_t)PLT_TICKS;
 }
