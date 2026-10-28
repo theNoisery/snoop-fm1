@@ -248,6 +248,8 @@ static uint32_t delay_samples(void)
 /* process the three buses for one block; sends in, wet out (stereo). The LFOs (chorus, reverb line)
  * are computed per block and ramped: no sine per sample */
 #define HALF0(v) ((v) >= 0 ? (v) >> 1 : -(-(v) >> 1))   /* v / 2 towards zero */
+#include "rev_plate.c"           /* (SNOOP 0.4) the reverb's PLATE and SPACE */
+static int32_t plt_l[CTL], plt_r[CTL];
 static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet_l,
                      int32_t *wet_r, uint32_t n)
 {
@@ -296,6 +298,14 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         tape.on = 0;
     }
     const uint32_t L0 = REV_LINE[0] + REV_MOD + 2u, B1 = L0, B2 = B1 + REV_LINE[1], B3 = B2 + REV_LINE[2];
+    const uint32_t rtype = (uint32_t)song.g[G_RTYPE];   /* (SNOOP 0.4) 0: ROOM, SLOOP's (below); 1 PLATE, 2 SPACE */
+    if (rtype) {
+        plt_block(rev_in, plt_l, plt_r, n, rtype);
+    } else if (plt.inited) {                            /* back to ROOM: its lines held the plate's */
+        plt.inited = 0;
+        memset(rev_line, 0, sizeof rev_line);
+        fx.line_lp[0] = fx.line_lp[1] = fx.line_lp[2] = fx.line_lp[3] = 0;
+    }
     {   /* the chorus' two read points (Q8 samples back) and line 0's extra length, at both ends of the block */
         int32_t s0 = osc_sine(fx.cho_ph), s1, m0 = osc_sine(fx.rev_ph), m1;
         fx.cho_ph += LFO_INC[song.g[G_CRATE] & 127];
@@ -373,6 +383,13 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             fx.dly_w++;
             yl += x;
             yr += ping ? xr : x;
+        }
+        if (rtype) {                                    /* (SNOOP 0.4) PLATE / SPACE: the block's return */
+            wet_l[i] = yl + plt_l[i];
+            wet_r[i] = yr + plt_r[i];
+            rev_l[i] = plt_l[i];
+            rev_r[i] = plt_r[i];
+            continue;
         }
         /* reverb: two diffusers, then the four lines */
         a = mulq15(rev_in[i], 13000);

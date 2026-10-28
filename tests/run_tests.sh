@@ -164,6 +164,9 @@ run "FM6: algorithms, envelopes, retrigger, DC, clipping, macros, patch formats,
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/tape_test" tests/tape_test.c -lm
 mkdir -p build/tape_demo
 run "SNOOP TAPE delay: self-oscillation, decay, glide, project, cost, demos" "$OUT/tape_test" build/tape_demo
+$CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/reverb_test" tests/reverb_test.c -lm
+mkdir -p build/rev_demo
+run "SNOOP reverb TYPEs: PLATE, SPACE (decay, width, level, FREEZE, SIZE, project, cost, demos)" "$OUT/reverb_test" build/rev_demo
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/regress" tests/regress.c -lm
 # the CPU budget: counted by the kernel on macOS; elsewhere under callgrind when valgrind is there (exact, ~45 s;
 # SKIP_CPU_VALGRIND=1 to time instead, which is only a rough check)

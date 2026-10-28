@@ -214,10 +214,14 @@ static void punch_freeze_feed(int32_t *rev, const int32_t *l, const int32_t *r, 
     if (frz && !rev_frz) {                              /* (2.6) held from now on: the lines at half, their gain
                                                          * doubled (no step), so the loop's peaks have room (a big
                                                          * reverb held hard clipped on its int16 lines, losing level) */
-        for (i = 0; i < sizeof rev_line / sizeof rev_line[0]; i++)
-            rev_line[i] = (int16_t)HALF0(rev_line[i]);
-        for (i = 0; i < 4u; i++)
-            fx.line_lp[i] = HALF0(fx.line_lp[i]);
+        if (song.g[G_RTYPE] && plt.inited) {           /* (SNOOP 0.4) PLATE / SPACE: theirs */
+            plt_freeze_halve();
+        } else {
+            for (i = 0; i < sizeof rev_line / sizeof rev_line[0]; i++)
+                rev_line[i] = (int16_t)HALF0(rev_line[i]);
+            for (i = 0; i < 4u; i++)
+                fx.line_lp[i] = HALF0(fx.line_lp[i]);
+        }
         punch.fg = 8192;                                /* x 8: the old x 4 on the full lines */
     }
     rev_frz = (uint8_t)frz;

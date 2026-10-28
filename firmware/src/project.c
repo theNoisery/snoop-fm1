@@ -41,7 +41,7 @@
                                                 * so the format and its size do not change */
 _Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u,
                "the globals a project holds, then G_DRDLY (then 2.6's GLO > MIDI: settings of the FM-1)");
-_Static_assert(G_FXFADE == G_CLKOUT + 1u && G_DMODE == G_FXFADE + 1u && G_COUNT == G_DMS + 1u && DLY_MS_MAX < 2048,
+_Static_assert(G_FXFADE == G_CLKOUT + 1u && G_DMODE == G_FXFADE + 1u && G_COUNT == G_RMOD + 1u && DLY_MS_MAX < 2048,
                "G_FXFADE (2.7.2), a setting of the FM-1; then SNOOP's delay (in a project: proj_dly_put)");
 #define PROJ_NC6 ((uint32_t)P_ITYPE)           /* format 6: the parameters kept in 16 bits, P_LEVEL .. P_VLEAD (as 5), */
 #define PROJ_NX6 ((uint32_t)(P_E0 - P_ITYPE))  /* the 2.6 ones in a byte (0..127), then P_E0 .. P_E7 */
@@ -444,6 +444,24 @@ static void proj_dly_get(const project_t *p)
     song.g[G_DMS] = (int16_t)(ms ? clamp((int32_t)ms, GP[G_DMS].min, GP[G_DMS].max) : GP[G_DMS].def);
 }
 
+/* (SNOOP 0.4) REV 2 in a project, in the slots of two settings of the FM-1 no project applies (G_SYNC, G_MIDI: kept
+ * in the settings, never loaded from a project): g[G_SYNC] = 0x4000 | TYPE << 7 | SIZE, g[G_MIDI] = 0x4000 | PRE << 7 |
+ * MOD. Without the mark: ROOM, the defaults */
+UI_SMALL static void proj_rev_put(project_t *p)
+{
+    p->g[G_SYNC] = (int16_t)(DLY_MARK | ((uint32_t)song.g[G_RTYPE] & 3u) << 7 | ((uint32_t)song.g[G_RSZ] & 127u));
+    p->g[G_MIDI] = (int16_t)(DLY_MARK | ((uint32_t)song.g[G_RPRE] & 127u) << 7 | ((uint32_t)song.g[G_RMOD] & 127u));
+}
+static void proj_rev_get(const project_t *p)
+{
+    uint32_t a = (uint16_t)p->g[G_SYNC], b = (uint16_t)p->g[G_MIDI];
+    int ok = (a & 0xFE00u) == DLY_MARK && (b & 0xC000u) == DLY_MARK;
+    song.g[G_RTYPE] = (int16_t)(ok ? clamp((int32_t)((a >> 7) & 3u), 0, GP[G_RTYPE].max) : GP[G_RTYPE].def);
+    song.g[G_RSZ] = (int16_t)(ok ? a & 127u : (uint32_t)GP[G_RSZ].def);
+    song.g[G_RPRE] = (int16_t)(ok ? clamp((int32_t)((b >> 7) & 127u), 0, GP[G_RPRE].max) : GP[G_RPRE].def);
+    song.g[G_RMOD] = (int16_t)(ok ? b & 127u : (uint32_t)GP[G_RMOD].def);
+}
+
 /* (2.7) the DRUMS screen's SOUND page in a project: each sound's TUNE (4 bits) and DECAY (3 bits), two's complement
  * (0: as the kit has it), 16 x 7 bits in the drum track's engine values E1..E7 (the drum track has no engine: they
  * were free), and a check of them in g[G_SAVE] (never loaded: SAVE is a GO button). An older SLOOP keeps neither
@@ -496,6 +514,7 @@ UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, a
     p->drdly = (uint8_t)song.g[G_DRDLY];
     proj_tx_put(p);
     proj_dly_put(p);                                    /* (SNOOP) the delay's MODE, WOW, DRIVE */
+    proj_rev_put(p);                                    /* (SNOOP 0.4) the reverb's TYPE, SIZE, PRE, MOD */
     for (i = 0; i < NTRK; i++) {
         uint32_t k;
         for (k = 0; k < P_COUNT; k++)
@@ -525,8 +544,10 @@ static void proj_apply(const project_t *p, int all)
             song.g[i] = (int16_t)clamp(p->g[i], GP[i].min, GP[i].max);
     song.g[G_DRDLY] = (int16_t)clamp(p->drdly, GP[G_DRDLY].min, GP[G_DRDLY].max);   /* (a load and a section, as REV) */
     proj_tx_get(p);                                     /* GLO > TEXTURE (2.6): a load and a section */
-    if (all)
+    if (all) {
         proj_dly_get(p);                                /* (SNOOP) with the delay's other values: a load only */
+        proj_rev_get(p);                                /* (SNOOP 0.4) and the reverb's, as its SIZE and DAMP */
+    }
     drum_tw_get(p);                                     /* (2.7) the drum sounds' TUNE and DECAY: a load and a section */
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];

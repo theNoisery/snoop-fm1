@@ -1200,8 +1200,8 @@ int main(int argc, char **argv)
             check(lit > 300u, "FILTER page: the graph strip shows it");
         }
         TSEL->p[P_TFLT] = 0;
-        SEL(9);
-        check(!strcmp(PT(), "REV/CHO"), "SELECT on FX: on to the last page, REV/CHO");
+        SEL(12);                                        /* (SNOOP: DLY 2, DLY 3 and REV 2 added) */
+        check(!strcmp(PT(), "REV 2"), "SELECT on FX: on to the last page, REV 2 (SNOOP)");
         tap(B_EDIT); SEL(-9);
         check(!strcmp(PT(), "EDIT 1"), "SELECT on EDIT: back to the first page");
         SEL(9);

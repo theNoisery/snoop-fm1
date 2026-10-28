@@ -5906,7 +5906,7 @@ const stepEdit = new Map(); /* index -> time of the last edit */
 
 /* parameter ids (firmware/src/core.h); used only when P_COUNT / G_COUNT match */
 /* pcount 71 / pe0 63: 2.6's INSERT, filter TYPE, ENV SYNC, LFO 2 (P_ITYPE 53 .. P_LPOL 62, after Felucca 1.4 / 1.5) */
-const EXPECT = { pcount: [61, 71], gcount: [32, 33, 45, 46, 47, 48, 49, 50, 53, 56], pe0: [53, 63] };   /* (SNOOP) 53: the delay's MODE, WOW, DRIVE; 56: PING, SYNC, ms */   /* gcount 33: 2.5's drum DLY (G_DRDLY); 45: 2.6's GLO > MIDI, TEXTURE, BEND; 46: 2.7's FX CH; 47: DR MAP; 48: REMOTE; 49: CLK OUT; 50: 2.7.2's FX FADE */
+const EXPECT = { pcount: [61, 71], gcount: [32, 33, 45, 46, 47, 48, 49, 50, 53, 56, 60], pe0: [53, 63] };   /* (SNOOP) 53: the delay's MODE, WOW, DRIVE; 56: PING, SYNC, ms; 60: the reverb's TYPE, SIZE, PRE, MOD */   /* gcount 33: 2.5's drum DLY (G_DRDLY); 45: 2.6's GLO > MIDI, TEXTURE, BEND; 46: 2.7's FX CH; 47: DR MAP; 48: REMOTE; 49: CLK OUT; 50: 2.7.2's FX FADE */
 const P = { LEVEL: 0, SLEN: 29, CHORD: 49 };
 const LAYOUT = (pe0, gcount = 0) => {
   const v251 = pe0 >= 63;                         /* (2.6: the pages the device has for the new parameters) */
@@ -5918,7 +5918,7 @@ const LAYOUT = (pe0, gcount = 0) => {
       ...opt(v251, ["FILTER", 0, [58], 0])] },     /* (4th: the engine it is shown with: ANALOG's filter TYPE) */
     { t: "VOICE", pages: [["LEVEL", 0, [0]], ["VOICE", 0, [37, 38, 41, 42]], ["VOICE 2", 0, [43, 44, 39, 40]]] },
     { t: "FX", pages: [["FX", 0, [33, 34, 35, 36]], ["FILTER", 0, [50]], ["SLICER", 0, [45, 46, 47, 48]],
-      ...opt(v251, ["INSERT", 0, [53, 54, 55, 56]], ["INSERT 2", 0, [57]]), ["DLY", 1, [4, 5, 6, 7]], ...opt(gcount >= 53, ["DLY 2", 1, gcount >= 56 ? [50, 51, 52, 53] : [50, 51, 52]]), ...opt(gcount >= 56, ["DLY 3", 1, [54, 55]]), ["REV/CHO", 1, [8, 9, 10, 11]]] },
+      ...opt(v251, ["INSERT", 0, [53, 54, 55, 56]], ["INSERT 2", 0, [57]]), ["DLY", 1, [4, 5, 6, 7]], ...opt(gcount >= 53, ["DLY 2", 1, gcount >= 56 ? [50, 51, 52, 53] : [50, 51, 52]]), ...opt(gcount >= 56, ["DLY 3", 1, [54, 55]]), ["REV/CHO", 1, [8, 9, 10, 11]], ...opt(gcount >= 60, ["REV 2", 1, [56, 57, 58, 59]])] },
     { t: "SEL", pages: [["SEL", 0, [25, 26, 27, 49]], ["SEL 2", 0, [28, 51, 52]]] },
     { t: "ARP", pages: [["ARP", 0, [17, 18, 19, 20]], ["ARP 2", 0, [21, 22, 23, 24]]] },
     { t: "SEQ PATTERN", tab: "seqgroups", pages: [["PATTERN", 0, [29, 30, 31, 32]]] },

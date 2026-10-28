@@ -10,6 +10,7 @@ static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
 static const char *const N_DMODE[] = {"DIGI", "TAPE"};   /* SNOOP: the delay (fx.c) */
 static const char *const N_DSYNC[] = {"SYNC", "FREE"};
+static const char *const N_RTYPE[] = {"ROOM", "PLATE", "SPACE"};   /* SNOOP 0.4: the reverb */
 /* GLO > MIDI (2.6): a synth track's MIDI channel, and the other channels */
 static const char *const N_SECT[] = {"A", "B", "C", "D", 0};   /* SAVE > SECTION (2.7): the slot as its section */
 static const char *const N_MCH[] = {"OFF", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"};
@@ -211,7 +212,11 @@ static const param_desc_t GP[G_COUNT] = {
     [G_DDRIVE] = PD("DRIVE", F_PCT, 0, 127, 32),  /* TAPE: how hard the echoes hit the tape (saturation) */
     [G_DPING] = PE("PING", N_ONOFF, 0),           /* SNOOP 0.3: ping-pong (fx.c) */
     [G_DSYNC] = PE("SYNC", N_DSYNC, 0),           /* SNOOP 0.3: SYNC the note values, FREE milliseconds */
-    [G_DMS] = {"TIME", F_INT, 1, DLY_MS_MAX, 375, 0, "ms"},   /* SNOOP 0.3: FREE's time (PING: up to half of it) */     /* 2.7.2: the punch-in FX fade (FX layer SELECT), 0 off .. 15 (punch.c) */
+    [G_DMS] = {"TIME", F_INT, 1, DLY_MS_MAX, 375, 0, "ms"},   /* SNOOP 0.3: FREE's time (PING: up to half of it) */
+    [G_RTYPE] = PE("TYPE", N_RTYPE, 0),           /* SNOOP 0.4: ROOM = SLOOP's reverb */
+    [G_RSZ] = PD("SIZE", F_PCT, 0, 127, 80),      /* PLATE / SPACE: the space's size (REV/CHO's SIZE is their DECAY) */
+    [G_RPRE] = {"PRE", F_INT, 0, 100, 10, 0, "ms"},   /* PLATE / SPACE: the pre-delay */
+    [G_RMOD] = PD("MOD", F_PCT, 0, 127, 50),      /* PLATE / SPACE: how much the tank's lines swing (chorus in the tail) */     /* 2.7.2: the punch-in FX fade (FX layer SELECT), 0 off .. 15 (punch.c) */
 };
 
 static const param_desc_t DRUM_KIT_DESC = PE("KIT", DRUM_KIT_NAMES, 0);
@@ -404,8 +409,11 @@ typedef struct {
 /* (SNOOP) a global's descriptor: TAPE's FDBK is the loop gain itself, 0 .. 110 % (past 100 the echoes grow until the
  * tape saturates: self-oscillation); DIGI keeps SLOOP's 0 .. 120 (0 .. 84 % of gain, shown as 0 .. 100 %) */
 static const param_desc_t TAPE_FDBK = {"FDBK", F_INT, 0, 110, 60, 0, "%"};
+static const param_desc_t PLT_DECAY = {"DECAY", F_PCT, 0, 127, 90, 0, 0};   /* (0.4) PLATE / SPACE: REV/CHO's SIZE */
 static const param_desc_t *gdesc(uint32_t id)
 {
+    if (id == G_RSIZE && song.g[G_RTYPE])
+        return &PLT_DECAY;
     return id == G_DFDBK && song.g[G_DMODE] ? &TAPE_FDBK : &GP[id];
 }
 
@@ -425,6 +433,7 @@ static const page_t PAGES[] = {
     {"DLY 2", FAM_FX, SC_GLOBAL, GR_NONE, {G_DMODE, G_DWOW, G_DDRIVE, G_DPING}},   /* SNOOP: TAPE, ping-pong */
     {"DLY 3", FAM_FX, SC_GLOBAL, GR_NONE, {G_DSYNC, G_DMS, 0xFF, 0xFF}},           /* SNOOP 0.3: FREE time in ms */
     {"REV/CHO", FAM_FX, SC_GLOBAL, GR_NONE, {G_RSIZE, G_RDAMP, G_CRATE, G_CDEPTH}},
+    {"REV 2", FAM_FX, SC_GLOBAL, GR_NONE, {G_RTYPE, G_RSZ, G_RPRE, G_RMOD}},   /* SNOOP 0.4: PLATE, SPACE */
     {"SEL", FAM_SCL, SC_TRACK, GR_SCALE, {P_ROOT, P_SCALE, P_QUANT, P_CHORD}},
     {"SEL 2", FAM_SCL, SC_TRACK, GR_SCALE, {P_TRANS, P_STRUM, P_VLEAD, 0xFF}},   /* (2.4: the chords played) */
     {"EDIT 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},
