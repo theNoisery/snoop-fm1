@@ -41,7 +41,8 @@
                                                 * so the format and its size do not change */
 _Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u,
                "the globals a project holds, then G_DRDLY (then 2.6's GLO > MIDI: settings of the FM-1)");
-_Static_assert(G_FXFADE == G_CLKOUT + 1u && G_COUNT == G_FXFADE + 1u, "G_FXFADE (2.7.2) is the last global, a setting of the FM-1");
+_Static_assert(G_FXFADE == G_CLKOUT + 1u && G_DMODE == G_FXFADE + 1u && G_COUNT == G_DDRIVE + 1u,
+               "G_FXFADE (2.7.2), a setting of the FM-1; then SNOOP's delay (in a project: proj_dly_put)");
 #define PROJ_NC6 ((uint32_t)P_ITYPE)           /* format 6: the parameters kept in 16 bits, P_LEVEL .. P_VLEAD (as 5), */
 #define PROJ_NX6 ((uint32_t)(P_E0 - P_ITYPE))  /* the 2.6 ones in a byte (0..127), then P_E0 .. P_E7 */
 _Static_assert(PROJ_NC6 == PROJ_NP_V5 - 8u && PROJ_NX6 == 10u, "format 6: format 5's parameters, then ten bytes");
@@ -417,6 +418,24 @@ static void proj_tx_get(const project_t *p)
         song.g[ID[i]] = (int16_t)clamp(v[i], GP[ID[i]].min, GP[ID[i]].max);
 }
 
+/* (SNOOP) FX > DLY 2 in a project, in the slots of two GO / selector globals no project applies (G_LOAD, G_SLOT: SLOOP
+ * saves 0 and 1..4 there and never loads them): g[G_LOAD] = 0x4000 | MODE << 7 | WOW, g[G_SLOT] = 0x4000 | DRIVE. Without
+ * the 0x4000 (a SLOOP project): DIGI and the defaults */
+#define DLY_MARK 0x4000
+UI_SMALL static void proj_dly_put(project_t *p)
+{
+    p->g[G_LOAD] = (int16_t)(DLY_MARK | ((uint32_t)song.g[G_DMODE] & 1u) << 7 | ((uint32_t)song.g[G_DWOW] & 127u));
+    p->g[G_SLOT] = (int16_t)(DLY_MARK | ((uint32_t)song.g[G_DDRIVE] & 127u));
+}
+static void proj_dly_get(const project_t *p)
+{
+    uint32_t a = (uint16_t)p->g[G_LOAD], b = (uint16_t)p->g[G_SLOT];
+    int ok = (a & ~0xFFu) == DLY_MARK && (b & ~0x7Fu) == DLY_MARK;
+    song.g[G_DMODE] = (int16_t)(ok ? (a >> 7) & 1u : (uint32_t)GP[G_DMODE].def);
+    song.g[G_DWOW] = (int16_t)(ok ? a & 127u : (uint32_t)GP[G_DWOW].def);
+    song.g[G_DDRIVE] = (int16_t)(ok ? b & 127u : (uint32_t)GP[G_DDRIVE].def);
+}
+
 /* (2.7) the DRUMS screen's SOUND page in a project: each sound's TUNE (4 bits) and DECAY (3 bits), two's complement
  * (0: as the kit has it), 16 x 7 bits in the drum track's engine values E1..E7 (the drum track has no engine: they
  * were free), and a check of them in g[G_SAVE] (never loaded: SAVE is a GO button). An older SLOOP keeps neither
@@ -468,6 +487,7 @@ UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, a
     p->sel = song.sel;
     p->drdly = (uint8_t)song.g[G_DRDLY];
     proj_tx_put(p);
+    proj_dly_put(p);                                    /* (SNOOP) the delay's MODE, WOW, DRIVE */
     for (i = 0; i < NTRK; i++) {
         uint32_t k;
         for (k = 0; k < P_COUNT; k++)
@@ -497,6 +517,8 @@ static void proj_apply(const project_t *p, int all)
             song.g[i] = (int16_t)clamp(p->g[i], GP[i].min, GP[i].max);
     song.g[G_DRDLY] = (int16_t)clamp(p->drdly, GP[G_DRDLY].min, GP[G_DRDLY].max);   /* (a load and a section, as REV) */
     proj_tx_get(p);                                     /* GLO > TEXTURE (2.6): a load and a section */
+    if (all)
+        proj_dly_get(p);                                /* (SNOOP) with the delay's other values: a load only */
     drum_tw_get(p);                                     /* (2.7) the drum sounds' TUNE and DECAY: a load and a section */
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];

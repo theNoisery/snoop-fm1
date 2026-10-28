@@ -105,6 +105,8 @@ enum {                          /* global parameters */
                                  * while SYNC is INT (seq.c clkout_block; a setting of the FM-1, kept in DR MAP's byte) */
     G_FXFADE,                   /* SLOOP 2.7.2, the FX layer (FX held), SELECT: how fast a punch-in FX fades in and out, 0 (instant, as
                                  * before) .. 15 (punch.c; a setting of the FM-1, kept in BEND's byte) */
+    G_DMODE, G_DWOW, G_DDRIVE,  /* SNOOP, FX > DLY 2: the delay as DIGI (SLOOP's, bit for bit) or TAPE (fx.c tape_*): wow and
+                                 * flutter, the drive into the tape. In a project (project.c proj_dly_put) */
     G_COUNT
 };
 

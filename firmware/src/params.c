@@ -8,6 +8,7 @@ static const char *const N_LWAVE[] = {"SIN", "TRI", "SAW", "SQR", "S&H"};
 static const char *const N_LSYNC[] = {"OFF", "4BAR", "2BAR", "1BAR", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"};
 static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
+static const char *const N_DMODE[] = {"DIGI", "TAPE"};   /* SNOOP: the delay (fx.c) */
 /* GLO > MIDI (2.6): a synth track's MIDI channel, and the other channels */
 static const char *const N_SECT[] = {"A", "B", "C", "D", 0};   /* SAVE > SECTION (2.7): the slot as its section */
 static const char *const N_MCH[] = {"OFF", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"};
@@ -203,7 +204,10 @@ static const param_desc_t GP[G_COUNT] = {
     [G_CLKOUT] = PE("CLOCK", N_CLKOUT, 0),       /* 2.7, GLO > MIDI 3: MIDI clock and START / STOP out on USB (seq.c) */
     [G_RMCH] = PE("REMOTE", N_MCH, 0),           /* 2.7, GLO > MIDI 3: the buttons over MIDI (CC 102..115, seq.c remote_cc) */        /* 2.7, GLO > MIDI 3: MIDI notes -> drum sounds (seq.c midi_drum_lane) */            /* 2.7, GLO > MIDI 3: the punch-in FX's channel (seq.c midi_fx) */
     [G_BEND] = PD("BEND", F_SEMI, 1, 12, 2),      /* 2.6, GLO > MIDI 2: MIDI pitch bend's range (a setting of the FM-1) */
-    [G_FXFADE] = PD("FADE", F_INT, 0, 15, 0),     /* 2.7.2: the punch-in FX fade (FX layer SELECT), 0 off .. 15 (punch.c) */
+    [G_FXFADE] = PD("FADE", F_INT, 0, 15, 0),
+    [G_DMODE] = PE("MODE", N_DMODE, 0),           /* SNOOP: DIGI (SLOOP's delay) / TAPE (fx.c tape_*) */
+    [G_DWOW] = PD("WOW", F_PCT, 0, 127, 40),      /* TAPE: wow, flutter and drift of the tape speed */
+    [G_DDRIVE] = PD("DRIVE", F_PCT, 0, 127, 32),  /* TAPE: how hard the echoes hit the tape (saturation) */     /* 2.7.2: the punch-in FX fade (FX layer SELECT), 0 off .. 15 (punch.c) */
 };
 
 static const param_desc_t DRUM_KIT_DESC = PE("KIT", DRUM_KIT_NAMES, 0);
@@ -393,6 +397,14 @@ typedef struct {
     uint8_t id[4];               /* param ids; 0xFF = empty slot */
 } page_t;
 
+/* (SNOOP) a global's descriptor: TAPE's FDBK is the loop gain itself, 0 .. 110 % (past 100 the echoes grow until the
+ * tape saturates: self-oscillation); DIGI keeps SLOOP's 0 .. 120 (0 .. 84 % of gain, shown as 0 .. 100 %) */
+static const param_desc_t TAPE_FDBK = {"FDBK", F_INT, 0, 110, 60, 0, "%"};
+static const param_desc_t *gdesc(uint32_t id)
+{
+    return id == G_DFDBK && song.g[G_DMODE] ? &TAPE_FDBK : &GP[id];
+}
+
 static const page_t PAGES[] = {
     {"ENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_ATK, P_DEC, P_SUS, P_REL}},
     {"ENV DEST", FAM_ENV, SC_TRACK, GR_NONE, {P_ED_FLT, P_ED_PIT, P_ED_SHP, P_ESYNC}},   /* (P_ED_FX: the level trim, no
@@ -406,6 +418,7 @@ static const page_t PAGES[] = {
     {"INSERT", FAM_FX, SC_TRACK, GR_INS, {P_ITYPE, P_IA, P_IB, P_IC}},   /* 2.6 (Felucca 1.5): the track's INSERT (fx.c), */
     {"INSERT 2", FAM_FX, SC_TRACK, GR_INS, {P_IMIX, 0xFF, 0xFF, 0xFF}},  /* .. its dry / wet; the drum track too */
     {"DLY", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX}},
+    {"DLY 2", FAM_FX, SC_GLOBAL, GR_NONE, {G_DMODE, G_DWOW, G_DDRIVE, 0xFF}},   /* SNOOP: TAPE */
     {"REV/CHO", FAM_FX, SC_GLOBAL, GR_NONE, {G_RSIZE, G_RDAMP, G_CRATE, G_CDEPTH}},
     {"SEL", FAM_SCL, SC_TRACK, GR_SCALE, {P_ROOT, P_SCALE, P_QUANT, P_CHORD}},
     {"SEL 2", FAM_SCL, SC_TRACK, GR_SCALE, {P_TRANS, P_STRUM, P_VLEAD, 0xFF}},   /* (2.4: the chords played) */
@@ -474,7 +487,7 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
     }
     if (pg->scope == SC_GLOBAL) {
         *valp = &song.g[id];
-        return &GP[id];
+        return gdesc(id);
     }
     *valp = &TSEL->p[id];
     return track_desc(TSEL, id);

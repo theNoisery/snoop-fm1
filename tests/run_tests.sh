@@ -161,6 +161,9 @@ run "SLICER: no clicks, timing, sync with the sequencer, STUT, cost, demos" "$OU
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/fm6_test" tests/fm6_test.c -lm
 mkdir -p build/fm6_demo
 run "FM6: algorithms, envelopes, retrigger, DC, clipping, macros, patch formats, voices, the bank, demos" "$OUT/fm6_test" build/fm6_demo
+$CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/tape_test" tests/tape_test.c -lm
+mkdir -p build/tape_demo
+run "SNOOP TAPE delay: self-oscillation, decay, glide, project, cost, demos" "$OUT/tape_test" build/tape_demo
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/regress" tests/regress.c -lm
 # the CPU budget: counted by the kernel on macOS; elsewhere under callgrind when valgrind is there (exact, ~45 s;
 # SKIP_CPU_VALGRIND=1 to time instead, which is only a rough check)

@@ -21,6 +21,36 @@ static struct {
     uint16_t line_i[4], ap_i[2];
     int32_t line_lp[4];
 } fx;
+/* (SNOOP) TAPE: the delay as a tape loop (FX > DLY 2 > MODE). Same buffer, same sends, same TIME, COLR and MIX as DIGI;
+ * on top of it:
+ *  - the tape speed glides: the read head follows a TIME change at most 3/4 of a sample per sample (the echoes bend
+ *    down in pitch when TIME grows, up when it shrinks, as a varispeed tape or Chronoblob);
+ *  - wow (a ~0.6 Hz sine plus a slow random drift) and flutter (~6.7 Hz) move the read head: WOW sets both;
+ *  - the loop: COLR's low-pass, a high-pass at ~30 Hz (no DC or rumble building up), then a soft saturation (a cubic
+ *    that flattens at 1.5x full scale): FDBK 0..110 % is the loop gain itself, so above 100 % the echoes grow until the
+ *    tape saturates and holds them there: self-oscillation, bounded, never a hard clip;
+ *  - DRIVE: the send hits the tape up to 4x harder (more saturation, more compression); the return is made up for half
+ *    of it. The return sits 3 dB under DIGI's: a loop held at saturation is as loud as the loudest echo. DIGI never touches any of this state: SLOOP's delay, bit for bit. */
+static struct {
+    int32_t d;                           /* the read head's delay now, Q8 samples (glides to TIME) */
+    int32_t lp, dc;                      /* COLR's low-pass; the high-pass' low-pass (Q8 more) */
+    uint32_t wow_ph, flt_ph, rnd;
+    int32_t drift, drift_to;             /* the random part of the wow, Q8 samples */
+    int32_t mod;                         /* the wow + flutter of the last block's end, Q8 samples */
+    uint8_t on;                          /* TAPE was running last block (else: start where TIME is, no sweep) */
+    uint8_t blk;                         /* blocks to the next drift target */
+} tape;
+#define TAPE_WOW_INC ((uint32_t)(0.6 * 4294967296.0 * CTL / FS))    /* per block */
+#define TAPE_FLT_INC ((uint32_t)(6.7 * 4294967296.0 * CTL / FS))
+#define TAPE_MAX_D ((int32_t)(DLY_LEN - 1024u) << 8)                /* (room for the wow behind the longest TIME) */
+/* the tape: a cubic soft clip, x Q14 (16384: an echo at full scale) -> the same scale, flat at 1.5x (output 16384) */
+static inline int32_t tape_sat(int32_t x)
+{
+    int32_t c;
+    x = clamp(x, -24576, 24576);
+    c = ((x * x) >> 14) * x >> 14;                      /* x^3 (24576^2 and 36864 x 24576 fit 31 bits) */
+    return x - mulq15(c, 4855);                         /* x - 4/27 x^3: slope 1 at 0, 0 at 1.5 */
+}
 static volatile uint8_t rev_frz;         /* punch-in FREEZE (punch.c): the reverb holds, no loss, no damping */
 static int32_t rev_l[CTL], rev_r[CTL];   /* the reverb's own return of this block (FREEZE plays it) */
 
@@ -214,6 +244,40 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
                                                          * loss, rounded to nearest; 0: as always, bit for bit) */
     int32_t cdepth = song.g[G_CDEPTH] * 6;
     int32_t ca0, ca1, cb0, cb1, ma, mb, dca, dcb;
+    const int is_tape = song.g[G_DMODE] != 0;          /* (SNOOP) */
+    int32_t t_fb = 0, t_m0 = 0, t_dm = 0, t_to = 0, t_gin = 4096, t_gout = 4096;
+    if (is_tape) {
+        int32_t w = song.g[G_DWOW], wow, flt;
+        t_fb = (song.g[G_DFDBK] > 110 ? 110 : song.g[G_DFDBK]) * 328;   /* 0 .. 1.10, Q15 */
+        if (thr_dly && t_fb < 77 * 328)                 /* ECHO THROW: at least 70 %, as DIGI */
+            t_fb += ((77 * 328 - t_fb) * thr_dly) >> 15;
+        t_gin = 4096 + song.g[G_DDRIVE] * 97;           /* x1 .. x4 into the tape */
+        t_gout = (2900 << 12) / (4096 + song.g[G_DDRIVE] * 48);   /* -3 dB (a self-oscillating loop stays under the
+                                                                   * master's limiter), DRIVE half made up */
+        t_to = (int32_t)dl << 8;
+        if (!tape.on) {                                 /* coming on: the head where TIME is, the filters empty */
+            tape.on = 1;
+            tape.d = t_to;
+            tape.lp = tape.dc = tape.mod = 0;
+            tape.drift = tape.drift_to = 0;
+        }
+        tape.wow_ph += TAPE_WOW_INC;
+        tape.flt_ph += TAPE_FLT_INC;
+        if (!tape.blk--) {                              /* a new drift target every 128 blocks (~0.1 s) */
+            tape.blk = 127;
+            tape.rnd = tape.rnd * 1664525u + 1013904223u;
+            tape.drift_to = (int32_t)(tape.rnd >> 16) - 32768;   /* -1 .. 1, Q15 */
+        }
+        tape.drift += (tape.drift_to - tape.drift) >> 8;   /* (a slow wander, ~0.2 s)  */
+        wow = w * w * 2;                                /* depth, Q8 samples: up to ~3 ms of wow, quadratic */
+        flt = w * 24;                                   /* .. and ~0.3 ms of flutter */
+        t_m0 = tape.mod;
+        tape.mod = (int32_t)(((int64_t)(osc_sine(tape.wow_ph) + (tape.drift >> 1)) * wow) >> 15) +
+                   (int32_t)(((int64_t)osc_sine(tape.flt_ph) * flt) >> 15) + wow + flt + (wow >> 1);   /* (>= 0) */
+        t_dm = (tape.mod - t_m0) >> CTL_LOG2;
+    } else {
+        tape.on = 0;
+    }
     const uint32_t L0 = REV_LINE[0] + REV_MOD + 2u, B1 = L0, B2 = B1 + REV_LINE[1], B3 = B2 + REV_LINE[2];
     {   /* the chorus' two read points (Q8 samples back) and line 0's extra length, at both ends of the block */
         int32_t s0 = osc_sine(fx.cho_ph), s1, m0 = osc_sine(fx.rev_ph), m1;
@@ -239,6 +303,7 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             yr = (d0 + (((d1 - d0) * (r1 & 255)) >> 8)) << 1;
         }
         fx.cho_w++;
+        if (!is_tape) {
         /* delay with a low-passed feedback (in the middle) */
         x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
         fx.dly_lp += mulq15(x - fx.dly_lp, col);
@@ -246,6 +311,30 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             (int16_t)clamp((dly_in[i] >> 1) + mulq15(fx.dly_lp, fb), -32768, 32767);
         fx.dly_w++;
         x = mulq15(x << 1, dmix);
+        } else {                                        /* (SNOOP) TAPE, see `tape` above */
+            int32_t e = t_to - tape.d, r, y;
+            uint32_t ri;
+            if (e) {                                    /* the speed glides: 1/4096 of the way a sample (~93 ms), */
+                int32_t s = ((e < 0 ? -e : e) >> 12) + 1;   /* at most 3/4 of a sample per sample */
+                if (s > 192)
+                    s = 192;
+                tape.d += e < 0 ? -s : s;
+            }
+            r = tape.d + t_m0 + t_dm * (int32_t)i;
+            r = r < (2 << 8) ? 2 << 8 : r > TAPE_MAX_D ? TAPE_MAX_D : r;
+            ri = (uint32_t)r >> 8;
+            {
+                int32_t c0 = dly_buf[(fx.dly_w - ri) & (DLY_LEN - 1u)], c1 = dly_buf[(fx.dly_w - ri - 1u) & (DLY_LEN - 1u)];
+                x = c0 + (((c1 - c0) * (r & 255)) >> 8);
+            }
+            tape.lp += mulq15(x - tape.lp, col);        /* COLR */
+            tape.dc += ((tape.lp << 8) - tape.dc) >> 8;     /* the high-pass' low-pass: one pole at ~27 Hz */
+            y = tape.lp - (tape.dc >> 8);
+            y = tape_sat(((clamp(dly_in[i] >> 1, -49152, 49152) * (t_gin >> 2)) >> 10) + mulq15(y, t_fb));   /* DRIVE in */
+            dly_buf[fx.dly_w & (DLY_LEN - 1u)] = (int16_t)y;
+            fx.dly_w++;
+            x = mulq15(mulq15(x << 1, t_gout << 3), dmix);
+        }
         yl += x;
         yr += x;
         /* reverb: two diffusers, then the four lines */

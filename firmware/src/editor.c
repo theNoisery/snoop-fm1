@@ -386,7 +386,7 @@ UI_SMALL static const param_desc_t *ed_desc(uint32_t scope, uint32_t id, int16_t
     }
     if (scope == 1 && id < G_COUNT) {
         *vp = &song.g[id];
-        return &GP[id];
+        return gdesc(id);                                 /* (SNOOP: TAPE's FDBK) */
     }
     return 0;
 }
