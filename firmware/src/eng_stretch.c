@@ -63,6 +63,21 @@ typedef struct {
     uint8_t src, nz;
 } st_part_t;
 
+/* (SNOOP) a SAMPLE / GRAIN / STRETCH source knob: over the sets whose samples were taken out (no zones) */
+static int src_gone(int32_t v) { return v >= 0 && v < (int32_t)SMP_NSETS && !SMP_SETS[v].nz; }
+static int32_t src_step(const param_desc_t *d, int32_t v, int32_t s)
+{
+    int32_t dir = s > 0 ? 1 : -1, n = s < 0 ? -s : s, t;
+    v = clamp(v, d->min, d->max);
+    while (n--) {
+        for (t = v + dir; t >= d->min && t <= d->max && src_gone(t); t += dir)
+            ;
+        if (t < d->min || t > d->max)
+            break;
+        v = t;
+    }
+    return v;
+}
 static const smp_zone_t ST_LIVE_ZONE = {0, LIVE_LEN, LIVE_LEN, LIVE_LEN, 32768, 60 * 16, 0, 0, 0, 127, 0};
 
 static void st_reset(st_part_t *P, uint32_t src, uint32_t stamp)

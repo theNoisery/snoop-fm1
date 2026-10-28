@@ -556,7 +556,8 @@ UI_SMALL static void edit_param(uint32_t slot, int32_t steps)
     d = page_desc(pg, slot, &vp);
     if (!d || !vp || d->max == d->min)
         return;
-    v = d == &DRUM_KIT_DESC ? kit_step(*vp, steps)       /* (SNOOP: over the kits taken out) */
+    v = d == &DRUM_KIT_DESC ? kit_step(*vp, steps)       /* (SNOOP: over the kits taken out, */
+      : d->names == SMP_ALL_NAMES || d->names == ST_SRC_NAMES ? src_step(d, *vp, steps)   /* the sets emptied) */
       : d->names == ESYNC_NAMES || d->names == N_IBITS || d->names == N_IRATE ? names_turn(d, *vp, steps)   /* (a name a detent) */
                                     : clamp(*vp + accel(EN_K1 + slot, steps, d->names ? 0 : d->max - d->min), d->min, d->max);
     *vp = (int16_t)v;
@@ -1300,7 +1301,8 @@ UI_SMALL static void ui_input(void)
         if (ui.home) {
             int16_t *vp;
             const param_desc_t *d = home_param(k, &vp);
-            *vp = (int16_t)clamp(*vp + accel(EN_K1 + k, s, d->names ? 0 : d->max - d->min), d->min, d->max);   /* (a list: no jumps) */
+            *vp = (int16_t)(d->names == SMP_ALL_NAMES || d->names == ST_SRC_NAMES ? src_step(d, *vp, s)   /* (SNOOP) */
+                            : clamp(*vp + accel(EN_K1 + k, s, d->names ? 0 : d->max - d->min), d->min, d->max));   /* (a list: no jumps) */
             if (!is_drum(TSEL) && p_lockable(ENGINES[TSEL->eng_req % NENGINES]->macro[k & 3u]))
                 ui.lock_par = ENGINES[TSEL->eng_req % NENGINES]->macro[k & 3u];
             if (!is_drum(TSEL))

@@ -3,7 +3,7 @@
 /* Felucca user interface. Four columns map to KNOB 1..4. Rendering is lazy:
  * every element remembers what it last drew and is redrawn only on change. */
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "SNOOP 0.8"  /* The Noisery's build of SLOOP 2.8.3 (based on Felucca) */
+#define FELUCCA_VERSION "SNOOP 0.8.1"  /* The Noisery's build of SLOOP 2.8.3 (based on Felucca) */
 #endif
 static void project_save(uint32_t slot);
 static void arrangement_save(void);
@@ -710,13 +710,14 @@ UI_SMALL static void select_engine(uint32_t e)
 /* the factory presets as one list by kind (basses, keys, organs, pads, leads, plucks and bells, stabs,
  * the rest), then the used user presets: the PRESETS knob and the PRESETS page browse it. By name: an
  * engine's preset table may change order; tests/ui_pages_test.c checks every preset is here once */
-enum { BK_BASS, BK_KEYS, BK_ORGAN, BK_PAD, BK_LEAD, BK_PLUCK, BK_STAB, BK_FX };
+enum { BK_BASS, BK_KEYS, BK_ORGAN, BK_PAD, BK_LEAD, BK_PLUCK, BK_STAB, BK_FX, BK_GONE };   /* (SNOOP) BK_GONE: hidden */
 static const char *const BANK_KIND[] = {"BASS", "KEYS", "ORGN", "PAD", "LEAD", "PLCK", "STAB", "FX"};
 static const struct { uint8_t kind, e; const char *name; } BANK[] = {
     {BK_BASS, 0, "808 BOOM"}, {BK_BASS, 0, "808 DIRTY"}, {BK_BASS, 0, "808 SLIDE"}, {BK_BASS, 0, "SUB BASS"},
     {BK_BASS, 0, "PLUGG BASS"}, {BK_BASS, 0, "REESE"}, {BK_BASS, 0, "WOBBLE"}, {BK_BASS, 0, "ACID 303"},
     {BK_BASS, 1, "FM BASS"}, {BK_BASS, 2, "CZ BASS"}, {BK_BASS, 6, "FAT BASS"}, {BK_BASS, 0, "FUNK BASS"},
-    {BK_BASS, 5, "WOW BASS"}, {BK_BASS, 3, "GB BASS"}, /* (SNOOP: UP BASS, DEEP BASS: their samples taken out) */
+    {BK_BASS, 5, "WOW BASS"}, {BK_BASS, 3, "GB BASS"}, {BK_GONE, 4, "UP BASS"}, {BK_GONE, 4, "DEEP BASS"},   /* (SNOOP: taken out; their
+                                                     * places kept: favourites and Program Change keep SLOOP's numbers) */
     {BK_BASS, ENGI_FM6, "ROUND BASS"}, {BK_BASS, 1, "BASS GTR"}, {BK_BASS, 0, "MONO BASS"},
     {BK_BASS, ENGI_PHYS, "PLUCK BASS"}, {BK_BASS, 3, "NES BASS"}, {BK_BASS, 0, "SAW BASS"},
     {BK_KEYS, 1, "RHODES"}, {BK_KEYS, 1, "DX RHODES"}, {BK_KEYS, 1, "WURLI"}, {BK_KEYS, 1, "M1 PIANO"},
@@ -752,7 +753,7 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
     {BK_STAB, 6, "MIN7 STAB"}, {BK_STAB, 6, "RAVE STAB"}, {BK_STAB, 6, "DUB CHORD"}, {BK_STAB, 0, "SYN BRASS"},
     {BK_STAB, 2, "CZ BRASS"}, {BK_STAB, 4, "HORN STAB"}, {BK_STAB, 4, "STRING STB"},
     {BK_STAB, ENGI_FM6, "BRASS SECT"}, {BK_STAB, 6, "80S POLY"}, {BK_STAB, 3, "CHIP CHORD"},
-    {BK_STAB, 6, "POWER STAB"}, /* (SNOOP: SCRATCH taken out) */ {BK_FX, 4, "GM KIT"}, {BK_FX, ENGI_PHYS, "HAND DRUM"},
+    {BK_STAB, 6, "POWER STAB"}, {BK_GONE, 4, "SCRATCH"}, {BK_FX, 4, "GM KIT"}, {BK_FX, ENGI_PHYS, "HAND DRUM"},
     {BK_FX, ENGI_PHYS, "MEMB TOMS"}, {BK_FX, ENGI_NOISE, "RAIN"}, {BK_FX, ENGI_NOISE, "NZ METAL"},
     {BK_FX, ENGI_PHYS, "TABLA"}, {BK_FX, ENGI_PHYS, "CONGA"}, {BK_FX, ENGI_PHYS, "TIMPANI"},
     {BK_FX, ENGI_NOISE, "VINYL"}, {BK_FX, ENGI_NOISE, "HISS"}, {BK_FX, ENGI_NOISE, "RISER"},
@@ -769,9 +770,17 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
 #define NBANK (sizeof BANK / sizeof BANK[0])
 static uint8_t bank_pi[NBANK];                       /* the preset index of each entry in its engine */
 static uint8_t bank_ready;
+/* (SNOOP) the browser's list: BANK without its BK_GONE entries. bank_vis: a list position's BANK index; bank_at: a
+ * BANK index's list position (0xFF hidden). Favourites and Program Change keep BANK (SLOOP's) numbers */
+static uint8_t bank_vis[NBANK], bank_at[NBANK], nvis;
 UI_SMALL static void bank_resolve(void)
 {
     uint32_t i, k;
+    for (i = 0, nvis = 0; i < NBANK; i++) {
+        bank_at[i] = 0xFF;
+        if (BANK[i].kind != BK_GONE)
+            bank_vis[nvis] = (uint8_t)i, bank_at[i] = nvis++;
+    }
     for (i = 0; i < NBANK; i++) {
         const engine_t *e = ENGINES[BANK[i].e % NENGINES];
         bank_pi[i] = 0xFF;
@@ -787,11 +796,11 @@ UI_SMALL static uint32_t base_pos(uint32_t *total)            /* list index of t
     if (!bank_ready)
         bank_resolve();
     for (i = 0; i < NBANK; i++)
-        if (BANK[i].e == TSEL->eng_req && bank_pi[i] == TSEL->preset)
-            cur = i;
+        if (BANK[i].e == TSEL->eng_req && bank_pi[i] == TSEL->preset && bank_at[i] != 0xFF)
+            cur = bank_at[i];
     if (user_of(TSEL) < UP_SLOTS)
-        cur = NBANK + up_rank(user_of(TSEL));
-    *total = NBANK + up_count();
+        cur = nvis + up_rank(user_of(TSEL));
+    *total = nvis + up_count();
     return cur;
 }
 
@@ -800,14 +809,20 @@ UI_SMALL static uint32_t base_at(uint32_t n, uint32_t *k)
 {
     if (!bank_ready)
         bank_resolve();
-    if (n >= NBANK) {
-        *k = up_nth(n - NBANK);
+    if (n >= nvis) {
+        *k = up_nth(n - nvis);
         return NENGINES;
     }
+    n = bank_vis[n];
     *k = bank_pi[n] == 0xFF ? 0u : bank_pi[n];
     return BANK[n].e;
 }
-UI_SMALL static const char *base_kind(uint32_t n) { return n < NBANK ? BANK_KIND[BANK[n].kind] : "USER"; }
+UI_SMALL static const char *base_kind(uint32_t n)
+{
+    if (!bank_ready)
+        bank_resolve();
+    return n < nvis ? BANK_KIND[BANK[bank_vis[n]].kind] : "USER";
+}
 
 /* SLOOP 2.7: favourites (PRESETS page, KNOB 4): up to 16 sounds at the top of the PRESETS list, kept in the FM-1's
  * settings (project.c, the settings' side record). An entry: a factory sound, its BANK index; a user preset, FAV_USER |
@@ -822,6 +837,8 @@ static int8_t fav_at = -1;                           /* the favourite the select
 UI_SMALL static uint32_t fav_list(uint32_t *b)                /* the favourites as base list indices, in order */
 {
     uint32_t i, n = 0;
+    if (!bank_ready)
+        bank_resolve();
     for (i = 0; i < FAV_N; i++) {
         uint32_t f = fav[i];
         if (f == FAV_NONE)
@@ -829,9 +846,9 @@ UI_SMALL static uint32_t fav_list(uint32_t *b)                /* the favourites 
         if (f & FAV_USER) {
             if (!up_used(f & 0xFFu))
                 continue;
-            b[n++] = NBANK + up_rank(f & 0xFFu);
-        } else if (f < NBANK) {
-            b[n++] = f;
+            b[n++] = nvis + up_rank(f & 0xFFu);
+        } else if (f < NBANK && bank_at[f] != 0xFF) {
+            b[n++] = bank_at[f];                    /* (SNOOP: kept by BANK number, shown at its list place) */
         }
     }
     return n;
@@ -946,7 +963,13 @@ UI_SMALL static int preset_go_to(track_t *t, uint32_t n)
     total = NBANK + up_count();
     if (n >= total)
         return 1;
-    e = base_at(n, &k);                              /* (2.7: the list without the favourites: PC n as before) */
+    if (n < NBANK) {                                 /* (SNOOP) PC n: BANK's n-th, as SLOOP; one taken out: nothing */
+        if (BANK[n].kind == BK_GONE || bank_pi[n] == 0xFF)
+            return 1;
+        e = BANK[n].e, k = bank_pi[n];
+    } else {
+        e = NENGINES, k = up_nth(n - NBANK);
+    }
     if (e == NENGINES)
         return up_load_to(t, k);
     if (e != t->eng_req)

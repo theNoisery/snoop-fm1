@@ -49,6 +49,20 @@ int main(void)
     check(!bad && kit == 0, "KIT knob down: the same, back to the first");
     check(kit_step(DRUM_SAMPLED + 3u, 1) == (int16_t)(DRUM_SAMPLED + 7u), "80S + 1 detent: BOOMBAP (VINTAGE, TRAP, DRILL skipped)");
     check(!strcmp(ds_kit(5)->name, "808"), "a project on TRAP (number 5): plays 808");
+    {   /* the source knobs (SAMPLE SET, GRAIN / STRETCH SRC) step over BASS and SCRCH */
+        const param_desc_t *d = &ENG_SAMPLE.edit[0];
+        int32_t v = 0, j, seen = 0;
+        for (j = 0; j < 20; j++) {
+            v = src_step(d, v, 1);
+            seen |= src_gone(v);
+        }
+        check(!seen && v == d->max && src_step(d, 0, 1) == 2 && src_step(d, 5, 1) == 7 && src_step(d, 7, -1) == 5,
+              "SET / SRC: PIANO > VIBES, FLUTE > PERC, and back: BASS and SCRCH skipped");
+        d = &ENG_STRETCH.edit[0];
+        for (v = d->max, j = 0; j < 30; j++)
+            seen |= src_gone(v = src_step(d, v, -1));
+        check(!seen && v == 0, "STRETCH SRC down to PIANO: never on them");
+    }
     {   /* SAMPLE and GRAIN on the emptied sets: silent, no crash */
         int32_t out[CTL * 2];
         uint32_t eng, set, b, loud = 0;

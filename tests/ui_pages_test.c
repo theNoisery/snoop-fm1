@@ -161,11 +161,17 @@ int main(int argc, char **argv)
             for (k = 0; k < ENGINES[e]->npresets; k++) {
                 for (hits = 0, n = 0; n < NBANK; n++)
                     hits += BANK[n].e == e && bank_pi[n] == k;
-                {   /* (SNOOP) their samples taken out: kept in the table (the numbers stay), not in the browser */
+                {   /* (SNOOP) their samples taken out: in BANK once (SLOOP's numbers), flagged BK_GONE, never shown */
                     const char *nm = ENGINES[e]->presets[k].name;
                     if (e == 4u && (!strcmp(nm, "UP BASS") || !strcmp(nm, "DEEP BASS") || !strcmp(nm, "SCRATCH"))) {
-                        if (hits) {
-                            printf("ui: preset %s (its samples taken out) is still in BANK\n", nm);
+                        uint32_t q, kk, shown = 0;
+                        for (n = 0; n < NBANK; n++)
+                            if (BANK[n].e == e && bank_pi[n] == k && BANK[n].kind != BK_GONE)
+                                hits = 99;
+                        for (q = 0; q < nvis; q++)
+                            shown += base_at(q, &kk) == e && kk == k;
+                        if (hits != 1 || shown) {
+                            printf("ui: preset %s (its samples taken out): %u times in BANK, shown %u\n", nm, hits, shown);
                             fails++;
                         }
                         continue;
