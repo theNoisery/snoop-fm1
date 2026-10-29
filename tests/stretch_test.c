@@ -65,6 +65,7 @@ static void start(void)
     host_tracks_init();
     memset(dly_buf, 0, sizeof dly_buf);
     frame = 0;
+    wav = 0;                                        /* (the last render's file is closed: none for this one yet) */
     trk[0].p[P_LEVEL] = trk[1].p[P_LEVEL] = trk[2].p[P_LEVEL] = 100;
     song.g[G_DRLVL] = 0;
     song.g[G_RTYPE] = 2;                            /* SPACE: as one would play it */
