@@ -87,7 +87,7 @@ int main(int argc, char **argv)
     blocks(10.0);
     for (k = 0; k < 3u; k++) trk_note_off(&trk[0], CHORD[k]);
     blocks(2.0);
-    if (wav) fclose(wav);
+    if (wav) fclose(wav), wav = 0;
     printf("  PNO STRETCH: rms s1 %.0f s5 %.0f s9 %.0f, peak %d\n", sec_rms[1], sec_rms[5], sec_rms[9], peak);
     check(sec_rms[9] > 0.3 * sec_rms[2] && sec_rms[2] > 300.0 && peak <= 32767, "a chord held 10 s: it sounds all along, bounded");
 
@@ -98,7 +98,7 @@ int main(int argc, char **argv)
     blocks(10.0);
     for (k = 0; k < 3u; k++) trk_note_off(&trk[0], CHORD[k] - 12u);
     blocks(2.0);
-    if (wav) fclose(wav);
+    if (wav) fclose(wav), wav = 0;
     start();
     host_preset(&trk[0], ES, preset_named(ES, "PNO FROZEN"));
     open_wav(dir, "stretch-pno-frozen.wav", 10.0);
@@ -106,7 +106,7 @@ int main(int argc, char **argv)
     blocks(8.0);
     trk_note_off(&trk[0], 60);
     blocks(2.0);
-    if (wav) fclose(wav);
+    if (wav) fclose(wav), wav = 0;
 
     /* 2. the playhead: 1x and FREEZ */
     {
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
         check(sec_rms[5] > 300.0 && sec_rms[9] > 300.0 && peak <= 32767, "it plays the phrase stretched, all along, bounded");
         trk_note_off(&trk[1], 60);
         blocks(3.0);
-        if (wav) fclose(wav);
+        if (wav) fclose(wav), wav = 0;
         check(live_w != w1, "the voice ended: it records again");
         trk[1].p[P_E0] = 0;                             /* back to PIANO */
         blocks(0.1);
@@ -184,7 +184,7 @@ int main(int argc, char **argv)
         check(sec_rms[3] > 200.0 && sec_rms[7] > 200.0 && peak <= 32767, "LIVD: the drums recorded, frozen, held");
         trk_note_off(&trk[1], 60);
         blocks(1.6);
-        if (wav) fclose(wav);
+        if (wav) fclose(wav), wav = 0;
     }
 
     /* 4b. (SNOOP 0.10.1) high notes: the grains cut short (the note reads the sample faster than SIZE lasts) still
