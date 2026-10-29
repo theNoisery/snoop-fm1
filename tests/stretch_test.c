@@ -196,7 +196,7 @@ int main(int argc, char **argv)
         trk_note_on(&trk[0], 84, 110);
         for (b = 0; b < 2000u; b++) {
             st_part_t *P = (st_part_t *)eng_arena_of(&trk[0], ES);
-            blocks((double)CTL / FS);
+            blocks((CTL + 0.5) / FS);           /* (one block: half a sample over, never rounded to 0) */
             if (b < 600u) continue;
             for (c = 0, i = 0; i < ST_NG; i++) c += P->g[i].owner != 0;
             ok84 += c >= 5u, nb++;
@@ -213,7 +213,7 @@ int main(int argc, char **argv)
         for (i = 0; i < NVOICE; i++) if (trk[0].v[i].active && trk[0].v[i].gate) vnew = i;
         for (b = 0; b < 1400u; b++) {                   /* ~1 s */
             st_part_t *P = (st_part_t *)eng_arena_of(&trk[0], ES);
-            blocks((double)CTL / FS);
+            blocks((CTL + 0.5) / FS);           /* (one block: half a sample over, never rounded to 0) */
             for (c = 0, i = 0; i < ST_NG; i++) c += P->g[i].owner == vnew + 1u;
             if (b >= 700u && c > newg) newg = c;
         }
