@@ -105,11 +105,12 @@ static void st_build(st_part_t *P, const track_t *t)   /* one index entry: a sou
     uint32_t i, zl = GR_MAXZ, k, e, pos;
     int32_t pred, idx;
     const smp_zone_t *z;
-    for (i = 0; i < ST_POLY && zl == GR_MAXZ; i++) {
-        int32_t vz = t->v[i].s[0];
-        if (t->v[i].active && vz >= 0 && vz < P->nz && P->zdone[vz] < P->zcnt[vz])
-            zl = (uint32_t)vz;
-    }
+    for (k = 0; k < 2u && zl == GR_MAXZ; k++)          /* (SNOOP 0.10.1) a held note's zone first, then a released one's */
+        for (i = 0; i < ST_POLY && zl == GR_MAXZ; i++) {
+            int32_t vz = t->v[i].s[0];
+            if (t->v[i].active && (k || t->v[i].gate) && vz >= 0 && vz < P->nz && P->zdone[vz] < P->zcnt[vz])
+                zl = (uint32_t)vz;
+        }
     for (i = 0; i < P->nz && zl == GR_MAXZ; i++)
         if (P->zdone[i] < P->zcnt[i])
             zl = i;
@@ -133,7 +134,44 @@ static uint32_t st_len(const int16_t *p)        /* SIZE: 40 ms .. 2 s, exponenti
 }
 
 /* a grain of voice vi at the playhead */
-static void st_spawn(st_part_t *P, const track_t *t, voice_t *v, uint32_t vi, uint32_t len, const vmod_t *m)
+/* (SNOOP 0.10.1) a held note before a released one: a released note's grains go on through its whole release, and a
+ * new note (higher: its grains read faster, they cost more) found the decode load taken: one or two grains for a
+ * second or more, a thin, slow start. Now a released note may fill the load to 5/8 only while a note is held, and
+ * a held note refused (the load, or no free grain) fades out the oldest grain of a released note in ST_FADE samples
+ * (the window jumps to the same height on its falling half: no step), trying again once it is gone */
+#define ST_FADE 1024u                                /* 23 ms */
+static int st_make_room(st_part_t *P, const track_t *t)
+{
+    uint32_t i, best = ST_NG, most = 0;
+    for (i = 0; i < ST_NG; i++) {
+        const st_grain_t *g = &P->g[i];
+        if (g->owner && !t->v[(g->owner - 1u) % NVOICE].gate && g->left > ST_FADE && g->wph < 0xC0000000u &&
+            (best == ST_NG || g->left > most))
+            best = i, most = g->left;               /* (the one with the most still to play) */
+    }
+    if (best == ST_NG)
+        return 0;
+    {
+        st_grain_t *g = &P->g[best];
+        uint32_t ph = g->wph < 0x80000000u ? 0u - g->wph : g->wph;   /* the same height, falling */
+        g->wph = ph;
+        g->winc = (0xFFFFFFFFu - ph) / ST_FADE;
+        g->left = ST_FADE;
+    }
+    return 1;
+}
+static int st_held_any(const track_t *t)
+{
+    uint32_t i;
+    for (i = 0; i < ST_POLY; i++)
+        if (t->v[i].active && t->v[i].gate)
+            return 1;
+    return 0;
+}
+
+/* the grain's length (output samples): it started, or it was skipped (the source not ready); 0: no room (the load,
+ * no free grain) */
+static uint32_t st_spawn(st_part_t *P, const track_t *t, voice_t *v, uint32_t vi, uint32_t len, const vmod_t *m)
 {
     const int16_t *p = t->p;
     uint32_t src = (uint32_t)p[P_E0] % ST_NSRC, live = src >= ST_LIVE_SRC, zl = (uint32_t)v->s[0], i, n, step, span, c;
@@ -145,8 +183,10 @@ static void st_spawn(st_part_t *P, const track_t *t, voice_t *v, uint32_t vi, ui
         if (!P->g[i].owner)
             g = &P->g[i];
     n = z->n;
-    if (!g || n < 64u || (!live && !P->zcnt[zl]))
-        return;
+    if (!g)
+        return 0;
+    if (n < 64u || (!live && !P->zcnt[zl]))
+        return len;
     /* pitch: the key against the root, PTCH, a few cents of scatter (SPRD: up to +-2/16 semitone) */
     d16 = m->pitch16 - z->root16 + p[P_E6] * 16 + ((((int32_t)(r1 & 0xFFFFu) - 32768) * p[P_E5] / 127 * 2) >> 15);
     step = (pow2_q16(clamp(d16, -1536, 576)) >> 8) * (z->rate >> 8);
@@ -157,19 +197,20 @@ static void st_spawn(st_part_t *P, const track_t *t, voice_t *v, uint32_t vi, ui
         len = (span << 8) / (step >> 8);
     }
     if (len < 64u)
-        return;
+        return len < 16u ? 16u : len;
     /* where: the playhead, scattered by SPRD over up to a whole grain */
     jit = (int32_t)gr_scale(span, (uint32_t)p[P_E5] * 516u);
     pos = head - (int32_t)(span >> 1) + (int32_t)gr_scale((uint32_t)jit, r2 & 0xFFFFu) - (jit >> 1);
     pos = clamp(pos, 0, (int32_t)(n - 3u - span));
     if (!live && (uint32_t)pos >> GR_SEG_LOG2 >= P->zdone[zl])
-        return;                                     /* not indexed yet */
-    if (!live) {                                    /* the decode load: a cap on the cost */
+        return len;                                 /* not indexed yet */
+    if (!live) {                                    /* the decode load: a cap on the cost (a released note: 5/8 of it
+                                                     * while a note is held) */
         for (i = 0, c = step; i < ST_NG; i++)
             if (P->g[i].owner && P->g[i].z)
                 c += P->g[i].step;
-        if (c > ST_LOAD_MAX)
-            return;
+        if (c > (v->gate || !st_held_any(t) ? ST_LOAD_MAX : ST_LOAD_MAX / 8u * 5u))
+            return v->gate ? 0u : len;              /* (a held note: no room) */
     }
     g->step = step;
     g->frac = 0;
@@ -198,6 +239,7 @@ static void st_spawn(st_part_t *P, const track_t *t, voice_t *v, uint32_t vi, ui
         g->b = gr_dec(z, (uint32_t)pos + 1u, &g->pred, &g->idx);
         g->pos = (uint32_t)pos + 2u;
     }
+    return len;
 }
 
 /* one grain into acc; 0 when it ended. The window: a ramp over the block between its exact ends (as GRAIN's) */
@@ -330,8 +372,15 @@ static void stretch_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
         v->s[1] += (int32_t)iv;
         if (v->s[1] < 0)
             v->s[1] = 0;
-        if (mine < (nact > 1u ? ST_NG / nact : ST_NG))
-            st_spawn(P, t, v, vi, len, m);
+        if (mine < (nact > 1u ? ST_NG / nact : ST_NG)) {
+            uint32_t got = st_spawn(P, t, v, vi, len, m);
+            if (!got && v->gate && st_make_room(P, t))
+                v->s[1] = (int32_t)ST_FADE;             /* (again once the faded grain is gone) */
+            else if (got && got < len)                  /* (SNOOP 0.10.1) a grain cut short (a note far above the
+                                                         * sample's root reads through it faster than SIZE): the next
+                                                         * one as much sooner, the overlap DENS keeps (was: gaps) */
+                v->s[1] = (int32_t)(got / dens);
+        }
     }
     lp = 4000 + ((clamp((p[P_E7] << 8) + m->cutoff, 0, 127 << 8) * 28767) >> 15);
     for (i = 0; i < n; i++) {

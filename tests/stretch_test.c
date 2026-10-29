@@ -186,6 +186,41 @@ int main(int argc, char **argv)
         if (wav) fclose(wav);
     }
 
+    /* 4b. (SNOOP 0.10.1) high notes: the grains cut short (the note reads the sample faster than SIZE lasts) still
+     * overlap DENS deep; and a new note while another is released gets its grains (the held one first) */
+    {
+        uint32_t b, i, c, ok84 = 0, nb = 0, newg = 0, vnew = NVOICE;
+        start();
+        host_preset(&trk[0], ES, preset_named(ES, "PNO STRETCH"));
+        trk_note_on(&trk[0], 84, 110);
+        for (b = 0; b < 2000u; b++) {
+            st_part_t *P = (st_part_t *)eng_arena_of(&trk[0], ES);
+            blocks((double)CTL / FS);
+            if (b < 600u) continue;
+            for (c = 0, i = 0; i < ST_NG; i++) c += P->g[i].owner != 0;
+            ok84 += c >= 5u, nb++;
+        }
+        printf("  note 84 (grains cut short): 5 or more grains at once %u %% of the time (DENS 6)\n", ok84 * 100u / nb);
+        check(ok84 * 10u >= nb * 8u, "a high note: its short grains overlap DENS deep (was 3..4 of 6: choppy)");
+        trk_note_off(&trk[0], 84);
+        start();
+        host_preset(&trk[0], ES, preset_named(ES, "PNO STRETCH"));
+        trk_note_on(&trk[0], 48, 110);
+        blocks(2.0);
+        trk_note_off(&trk[0], 48);                      /* (its long release goes on) */
+        trk_note_on(&trk[0], 91, 110);
+        for (i = 0; i < NVOICE; i++) if (trk[0].v[i].active && trk[0].v[i].gate) vnew = i;
+        for (b = 0; b < 1400u; b++) {                   /* ~1 s */
+            st_part_t *P = (st_part_t *)eng_arena_of(&trk[0], ES);
+            blocks((double)CTL / FS);
+            for (c = 0, i = 0; i < ST_NG; i++) c += P->g[i].owner == vnew + 1u;
+            if (b >= 700u && c > newg) newg = c;
+        }
+        printf("  48 released, 91 played: the new note's grains after 0.5 s: up to %u\n", newg);
+        check(vnew < NVOICE && newg >= 4u, "a new note over a released one: its grains first (was 2..3: thin, slow)");
+        trk_note_off(&trk[0], 91);
+    }
+
     /* 5. the cost: GRAIN and STRETCH, a chord of three */
     {
         double t0, t1, cg, cs;
