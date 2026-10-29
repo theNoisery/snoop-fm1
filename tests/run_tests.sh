@@ -28,7 +28,7 @@ OUT=build/host
 mkdir -p "$OUT"
 CC="${CC:-cc} -O1 -Wall -Wno-unused-function"
 fail=0
-run() { echo "== $1"; _n="$1"; shift; "$@" > "$OUT/.run.txt" 2>&1; _rc=$?; cat "$OUT/.run.txt"
+run() { echo "== $1"; _n="$1"; shift; "$@" > "$OUT/.run.txt" 2>&1 && _rc=0 || _rc=$?; cat "$OUT/.run.txt"
         [ $_rc -eq 0 ] || { fail=1; echo "  FAIL (exit status $_rc) $_n"; tail -n 4 "$OUT/.run.txt" | sed 's/^/  FAIL tail: /'; }; }
 
 [ -f build/felucca.fwsc ] || { echo "run ./build.sh first"; exit 1; }
