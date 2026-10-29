@@ -1087,7 +1087,7 @@ static void djf_process(int32_t *l, int32_t *r, uint32_t n)
 
 #include "punch.c"            /* PUNCH-IN FX on the whole mix (FX held + a white key) */
 /* ---- the render units and the second core. A unit is a synth part (mix_part) or the drum track with the
- * metronome (mix_drums); unit k is bit k of a mask, the drums bit NPART. What a unit on core 1 may not share
+ * metronome (mix_drums); unit k is bit k of a mask, the drums bit 3 (U_DRUMS: track 4, its part when a synth). What a unit on core 1 may not share
  * with one on core 0: part_buf (one per core); FM6's operator buses (per part, in its arena); the formant
  * engine's breath noise, one xorshift for all its voices (two FORMANT parts stay together, on core 0); and
  * rng() (libc.c): a part whose LFO wraps this block (track_lfo_tick draws) or whose PHYS model changed under
