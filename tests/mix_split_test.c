@@ -19,6 +19,8 @@
  *              HP, a preset loaded under the sounding notes of two parts in one block (both fade with their old
  *              sound at once, one on each core), TEXTURE (VINYL, ducked), REV THROW then ECHO THROW, the punch-in
  *              FREEZE, a pitch bend, live drum mutes, the metronome
+ *   t4synth    SNOOP 0.10: track 4 a synth part (FM6 chords, an S&H LFO), with ANALOG, DRAWBAR and PHYS: its unit
+ *              renders it and the metronome
  * Runs under every mode of the host double of core 1 (tests/cpu1_host.c: CORES, CHAOS, CPU1_TIMEOUT_AT) and
  * under ThreadSanitizer (tests/cpu1_modes.sh). Prints the jobs handed to core 1, to show the split happened.
  *   build/host/mix_split_test [QUICK]       QUICK: the splits 0, 15 and -1 only (the TSan run) */
@@ -29,8 +31,8 @@
 #define BLOCKS 1500u                                     /* ~2.2 s at 44.1 kHz */
 static const int32_t MASKS[] = {0, -1, 1, 2, 4, 8, 3, 5, 12, 7, 15};
 static const int32_t MASKS_QUICK[] = {0, 15, -1};
-static const char *const SCENE_NAME[] = {"formant3", "fm6x3", "phys_lfo", "mix", "fx26"};
-#define NSCENE 5u
+static const char *const SCENE_NAME[] = {"formant3", "fm6x3", "phys_lfo", "mix", "fx26", "t4synth"};
+#define NSCENE 6u
 
 static void drums_pattern(void)                          /* kick 4 on the floor, snare 4 / 12, hats, a clap */
 {
@@ -70,8 +72,20 @@ static void scene_setup(uint32_t s)
     song.g[G_DRDLY] = 30;
     drums_pattern();
     switch (s) {
+    case 5:                                              /* (SNOOP 0.10) track 4 a synth */
+        t4_switch(1);
+        host_preset(&trk[0], 0, 4);
+        host_preset(&trk[1], 7, 2);
+        host_preset(&trk[2], ENGI_PHYS, 1);
+        host_preset(TDRUM, ENGI_FM6, 3);
+        for (k = 0; k < NTRK; k++)
+            chords(&trk[k], k, 4, 48 + 5 * k);
+        TDRUM->p[P_LWAVE] = 4, TDRUM->p[P_LRATE] = 112, TDRUM->p[P_LD_PIT] = 30;
+        TDRUM->p[P_LEVEL] = 100, TDRUM->p[P_REV] = 40, TDRUM->p[P_PAN] = 20;
+        song.g[G_CLOCK] = CLICK_ON;
+        break;
     case 0:
-        for (k = 0; k < NPART; k++) {
+        for (k = 0; k < NSYN; k++) {
             host_preset(&trk[k], 5, k);                  /* FORMANT */
             chords(&trk[k], k, 4, 48 + 5 * k);
         }
@@ -79,13 +93,13 @@ static void scene_setup(uint32_t s)
         TDRUM->p[P_TFLT] = -50;
         break;
     case 1:
-        for (k = 0; k < NPART; k++) {
+        for (k = 0; k < NSYN; k++) {
             host_preset(&trk[k], ENGI_FM6, 2 * k);
             chords(&trk[k], k, 4, 52 + 3 * k);
         }
         break;
     case 2:
-        for (k = 0; k < NPART; k++) {
+        for (k = 0; k < NSYN; k++) {
             host_preset(&trk[k], ENGI_PHYS, 3 * k);
             trk[k].p[P_E0] = (int16_t)(k == 1u ? 3 : k);   /* MODAL, SYMP, MEMB */
             trk[k].p[P_LWAVE] = 4;                       /* S&H */
@@ -98,7 +112,7 @@ static void scene_setup(uint32_t s)
         host_preset(&trk[0], 0, 4);                      /* ANALOG */
         host_preset(&trk[1], ENGI_FM6, 1);
         host_preset(&trk[2], 7, 2);                      /* DRAWBAR */
-        for (k = 0; k < NPART; k++) {
+        for (k = 0; k < NSYN; k++) {
             trk[k].p[P_ITYPE] = (int16_t)(k == 0u ? 1 : k == 1u ? 5 : 7);   /* SOFT, CRUSH, FLANG */
             trk[k].p[P_IA] = (int16_t)(60 + 20 * k);
             trk[k].p[P_IB] = 70;
@@ -143,7 +157,7 @@ static void scene_setup(uint32_t s)
         trk[1].p[P_REV] = 90;
         trk[2].p[P_CHOR] = 80;
         trk[2].p[P_DLY] = 70;
-        for (k = 0; k < NPART; k++)
+        for (k = 0; k < NSYN; k++)
             chords(&trk[k], k, 4, 45 + 7 * k);
         song.g[G_CLOCK] = CLICK_ON;
         TDRUM->p[P_SLCR] = SL_GATE;
@@ -159,11 +173,11 @@ static void scene_block(uint32_t s, uint32_t b)          /* what the UI would do
 {
     uint32_t k;
     if (s == 2u && (b == 400u || b == 900u))
-        for (k = 0; k < NPART; k++)                      /* MODEL under the sounding notes: phys_render resets, with a draw */
+        for (k = 0; k < NSYN; k++)                      /* MODEL under the sounding notes: phys_render resets, with a draw */
             trk[k].p[P_E0] = (int16_t)((trk[k].p[P_E0] + 1) % PM_COUNT);
     if (s == 3u) {
         if (b % 128u == 64u)
-            trk[(b / 128u) % NPART].p[P_MUTE] ^= 1;      /* mute fades, each part in turn */
+            trk[(b / 128u) % NSYN].p[P_MUTE] ^= 1;      /* mute fades, each part in turn */
         if (b == 500u)
             song.solo = 2;
         if (b == 700u)
@@ -183,7 +197,7 @@ static void scene_block(uint32_t s, uint32_t b)          /* what the UI would do
         if (b == 500u) {                                 /* a preset on two parts under their notes (ui.c apply_preset_to):
                                                           * both fade out with their old sound in the same blocks */
             uint32_t k;
-            for (k = 1; k < NPART; k++) {
+            for (k = 1; k < NSYN; k++) {
                 sound_change(&trk[k]);
                 panic_req |= (uint8_t)(1u << k);
                 host_preset_req(&trk[k], k == 1u ? ENGI_FM6 : 7, 4 + k);
@@ -278,7 +292,7 @@ int main(int argc, char **argv)
                 why = "crashed";
             else if (r.hash != ref.hash)
                 why = "the output differs from the unsplit render";
-            else if (mask && !r.jobs && (s != 0u || mask < 0 || (mask & (1 << NPART))))
+            else if (mask && !r.jobs && (s != 0u || mask < 0 || (mask & (1 << NSYN))))
                 why = "no job was handed to core 1";          /* (formant3: its parts never go; the drums do) */
             else if (!mask && r.jobs)
                 why = "jobs handed to core 1 with no unit for it";

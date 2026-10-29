@@ -1095,8 +1095,8 @@ static void djf_process(int32_t *l, int32_t *r, uint32_t n)
  * SLOOP 2.6 added two things a part keeps for its block, now per part or per core: the ENV SYNC steps (voice.c
  * esync_k) and the preset fade's sound set aside (mix_part pnew); its INSERT state is per part (ins[]), the drum
  * track's its own; TEXTURE, the THROWs' glide, FREEZE and the look-ahead limiter run on core 0 outside the units. */
-#define U_DRUMS (1u << NPART)
-#define U_ALL ((2u << NPART) - 1u)
+#define U_DRUMS (1u << TRK_DRUM)                    /* track 4's unit: the drums, or (SNOOP 0.10) its synth part */
+#define U_ALL ((2u << TRK_DRUM) - 1u)
 
 /* the drum track's INSERT (2.6): its left, right and the two sends, each through its own state, the same settings */
 static void drum_insert(int32_t *l, int32_t *r, int32_t *v, int32_t *d, uint32_t n)
@@ -1150,11 +1150,17 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
 static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
 {
     uint32_t k;
-    for (k = 0; k < NPART; k++)
+    for (k = 0; k < NSYN; k++)
         if (mask & (1u << k))
             mix_part(&trk[k], n, mx, scratch);
-    if (mask & U_DRUMS)
-        mix_drums(n, mx);
+    if (mask & U_DRUMS) {
+        if (is_drum(TDRUM)) {
+            mix_drums(n, mx);
+        } else {                                        /* (SNOOP 0.10) track 4 a synth part: it, then the metronome */
+            mix_part(TDRUM, n, mx, scratch);
+            click_render(mx->l, mx->r, n);
+        }
+    }
 }
 
 /* the load figures: core 1's time in its job and core 0's time waiting for it, in ticks over a half (cpu1.h
@@ -1182,11 +1188,11 @@ static void cpu1_units_job(uint32_t arg)                /* core 1's job: the uni
  * less the parts that must stay here (above) */
 static uint32_t units_split(void)
 {
-    uint32_t mask = cpu1_units < 0 ? (1u << (NPART - 1u)) | U_DRUMS : (uint32_t)cpu1_units & U_ALL, k, nform = 0;
+    uint32_t mask = cpu1_units < 0 ? (1u << (NSYN - 1u)) | U_DRUMS : (uint32_t)cpu1_units & U_ALL, k, nform = 0;
     if (!mask)
         return 0;
     for (k = 0; k < NPART; k++)
-        nform += ENGINES[trk[k].engine] == &ENG_FORMANT;
+        nform += trk_is_part(k) && ENGINES[trk[k].engine] == &ENG_FORMANT;
     for (k = 0; k < NPART; k++) {
         const track_t *t = &trk[k];
         const engine_t *e = ENGINES[t->engine];
@@ -1194,7 +1200,7 @@ static uint32_t units_split(void)
         const int16_t *p = fade && t->pold ? t->p_old : t->p;   /* the values this block renders with (mix_part: a
                                                          * preset fading out keeps its old sound; voice.c track_render:
                                                          * an engine fading out its old engine values, pe_old) */
-        if (!(mask & (1u << k)))
+        if (!(mask & (1u << k)) || !trk_is_part(k))
             continue;
         inc = p[P_LSYNC] ? lfo_sync_inc(p) : LFO_INC[p[P_LRATE] & 127];   /* (2.6: LFO 2 SYNC, as track_lfo_tick) */
         if (t->lfo_ph + inc < t->lfo_ph || (e == &ENG_PHYS && phys_render_draws(t, fade ? t->pe_old[0] : p[P_E0])) ||

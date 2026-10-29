@@ -3,7 +3,7 @@
 /* Felucca user interface. Four columns map to KNOB 1..4. Rendering is lazy:
  * every element remembers what it last drew and is redrawn only on change. */
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "SNOOP 0.9.2"  /* The Noisery's build of SLOOP 2.8.3 (based on Felucca) */
+#define FELUCCA_VERSION "SNOOP 0.10"  /* The Noisery's build of SLOOP 2.8.3 (based on Felucca) */
 #endif
 static void project_save(uint32_t slot);
 static void arrangement_save(void);
@@ -578,8 +578,9 @@ UI_SMALL static void go_home(void)
  * writes the sequencer: every pattern is the one the player records or enters. */
 
 /* the parts' sounds at power-on (engine, preset): bass, pad, lead */
-static const uint8_t TRK_DEF[NPART][2] = {{0, 0}, {1, 0}, {4, 5}};   /* ANALOG 808 BOOM, DIGITAL RHODES, SAMPLE LOFI FLUTE */
-UI_SMALL static uint32_t trk_def_engine(uint32_t i) { return i < NPART ? TRK_DEF[i][0] : 0u; }
+static const uint8_t TRK_DEF[NPART][2] = {{0, 0}, {1, 0}, {4, 5}, {0, 13}};   /* ANALOG 808 BOOM, DIGITAL RHODES, SAMPLE
+                                                     * LOFI FLUTE; (SNOOP 0.10) track 4 a synth: ANALOG WARM PAD */
+UI_SMALL static uint32_t trk_def_engine(uint32_t i) { return trk_is_part(i) ? TRK_DEF[i][0] : 0u; }
 
 UI_SMALL static int seq_is_empty(const track_t *t) { return track_empty(t); }
 
@@ -1168,4 +1169,36 @@ UI_SMALL static void ml_poll(void)
     mlu.pick = 0;
     ml_arm = 0;
     settings_later = 1;                          /* (saved when quiet) */
+}
+
+/* (SNOOP 0.10) GLO > TRACK 4: track 4 to DRUMS (syn 0) or SYNTH (1). Its other mode's pattern and sound are kept
+ * (seq.c t4_stash): back to it, they come back. A first SYNTH: an empty pattern, ANALOG WARM PAD; a first DRUMS (a
+ * project saved as SYNTH): an empty grid, the 808 kit */
+UI_SMALL static void t4_set(uint32_t syn)
+{
+    track_t *t = TDRUM;
+    int had;
+    syn = syn ? 1u : 0u;
+    if ((uint32_t)song.g[G_T4] == syn)
+        return;
+    fm1_irq_off();
+    had = t4_switch(syn);
+    if (!had && !syn)
+        t->p[P_E0] = DRUM_DEFAULT_KIT;
+    fm1_irq_on();
+    if (!had && syn) {
+        uint32_t e = TRK_DEF[TRK_DRUM][0], pi = TRK_DEF[TRK_DRUM][1];
+        set_engine_of(t, e);                            /* (its defaults, then the preset) */
+        apply_preset_to(t, pi);
+        fm1_irq_off();
+        t->engine = t->eng_req;                         /* (nothing sounds: no fade) */
+        fm1_irq_on();
+    }
+    if (!ui.home && cur_page()->scope == SC_DRUM && syn)
+        go_home();                                      /* (the drum grid has nothing to show now) */
+    if (ui.arm == G_T4)
+        ui.arm = 0;
+    sync_reload = 1;
+    ui.force = 1;
+    ui_message(syn ? "TRACK 4: SYNTH" : "TRACK 4: DRUMS");
 }

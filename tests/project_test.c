@@ -15,8 +15,8 @@
 #define PROJ_HOST 1
 static uint32_t trk_def_engine(uint32_t i)       /* ui.c TRK_DEF: ANALOG, DIGITAL, LOFI */
 {
-    static const uint8_t E[NPART] = {0, 1, 3};
-    return i < NPART ? E[i] : 0u;
+    static const uint8_t E[NSYN] = {0, 1, 3};
+    return i < NSYN ? E[i] : 0u;
 }
 #include "../firmware/src/project.c"
 

@@ -548,14 +548,14 @@ UI_SMALL static int32_t meter_px(int32_t a)                   /* |sample| (Q15) 
 
 UI_SMALL static uint32_t trk_level(uint32_t c)                /* LEVEL 0..127 (the drum track: GLO > DRUMS LEVEL) */
 {
-    return (uint32_t)(c == TRK_DRUM ? song.g[G_DRLVL] : trk[c].p[P_LEVEL]) & 127u;
+    return (uint32_t)(is_drum(&trk[c]) ? song.g[G_DRLVL] : trk[c].p[P_LEVEL]) & 127u;
 }
 
 UI_SMALL static void trk_short_name(uint32_t c, char *b)      /* the track's sound, b holds 13 */
 {
     const track_t *t = &trk[c];
     const engine_t *e = ENGINES[t->eng_req % NENGINES];
-    if (c == TRK_DRUM)
+    if (is_drum(t))
         str_cpy(b, "DRUM", 13);
     else if (user_of(t) < UP_SLOTS)
         up_name(user_of(t), b);
@@ -580,7 +580,7 @@ UI_SMALL static void draw_tracks(void)
         uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, row = 0xFFFFu;
         int32_t pk, m;
         char b[16];
-        if (c == TRK_DRUM) {
+        if (is_drum(t)) {
             pk = drums.peak;
             drums.peak = 0;
         } else {

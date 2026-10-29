@@ -41,7 +41,7 @@
                                                 * so the format and its size do not change */
 _Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u,
                "the globals a project holds, then G_DRDLY (then 2.6's GLO > MIDI: settings of the FM-1)");
-_Static_assert(G_FXFADE == G_CLKOUT + 1u && G_DMODE == G_FXFADE + 1u && G_COUNT == G_RMOD + 1u && DLY_MS_MAX < 2048,
+_Static_assert(G_FXFADE == G_CLKOUT + 1u && G_DMODE == G_FXFADE + 1u && G_T4 == G_RMOD + 1u && G_COUNT == G_T4 + 1u && DLY_MS_MAX < 2048,
                "G_FXFADE (2.7.2), a setting of the FM-1; then SNOOP's delay (in a project: proj_dly_put)");
 #define PROJ_NC6 ((uint32_t)P_ITYPE)           /* format 6: the parameters kept in 16 bits, P_LEVEL .. P_VLEAD (as 5), */
 #define PROJ_NX6 ((uint32_t)(P_E0 - P_ITYPE))  /* the 2.6 ones in a byte (0..127), then P_E0 .. P_E7 */
@@ -462,6 +462,18 @@ static void proj_rev_get(const project_t *p)
     song.g[G_RMOD] = (int16_t)(ok ? b & 127u : (uint32_t)GP[G_RMOD].def);
 }
 
+/* (SNOOP 0.10) GLO > TRACK 4 in a project, in the slot of a setting of the FM-1 no project applies (G_ROUTE, GLO >
+ * SYSTEM > IN: SLOOP saves 0..17 there and never loads it): 0x5A00 | SYNTH. Without the mark (a SLOOP project, or one
+ * of SNOOP's before 0.10): DRUMS. A project saved as SYNTH holds track 4 as a synth part (engine, preset, synth steps);
+ * SLOOP would read it as a drum track */
+#define T4_MARK 0x5A00
+UI_SMALL static void proj_t4_put(project_t *p) { p->g[G_ROUTE] = (int16_t)(T4_MARK | (song.g[G_T4] ? 1u : 0u)); }
+static uint32_t proj_t4_of(const project_t *p)
+{
+    uint32_t a = (uint16_t)p->g[G_ROUTE];
+    return (a & 0xFFFEu) == T4_MARK ? a & 1u : 0u;
+}
+
 /* (2.7) the DRUMS screen's SOUND page in a project: each sound's TUNE (4 bits) and DECAY (3 bits), two's complement
  * (0: as the kit has it), 16 x 7 bits in the drum track's engine values E1..E7 (the drum track has no engine: they
  * were free), and a check of them in g[G_SAVE] (never loaded: SAVE is a GO button). An older SLOOP keeps neither
@@ -515,6 +527,7 @@ UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, a
     proj_tx_put(p);
     proj_dly_put(p);                                    /* (SNOOP) the delay's MODE, WOW, DRIVE */
     proj_rev_put(p);                                    /* (SNOOP 0.4) the reverb's TYPE, SIZE, PRE, MOD */
+    proj_t4_put(p);                                     /* (SNOOP 0.10) track 4: DRUMS / SYNTH */
     for (i = 0; i < NTRK; i++) {
         uint32_t k;
         for (k = 0; k < P_COUNT; k++)
@@ -526,7 +539,9 @@ UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, a
             pt_set_mf(&p->t[i], k, trk[i].micro[k], (uint32_t)trk[i].fill[k / 4u] >> (2u * (k % 4u)));
         memcpy(p->t[i].lock, trk[i].lock, sizeof trk[i].lock);
     }
-    drum_tw_put(p);                                     /* (2.7) the drum sounds' TUNE and DECAY */
+    if (is_drum(TDRUM))
+        drum_tw_put(p);                                 /* (2.7) the drum sounds' TUNE and DECAY (SNOOP 0.10: track 4 a
+                                                         * synth: its E1..E7 are its engine's) */
     p->sum = proj_sum(p);
 }
 
@@ -535,7 +550,15 @@ UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, a
  * meanwhile (the song sections: called from it; a load: IRQ off) */
 static void proj_apply(const project_t *p, int all)
 {
-    uint32_t i, k;
+    uint32_t i, k, t4 = proj_t4_of(p), ntrk = NTRK;
+    if (all && t4 != (uint32_t)song.g[G_T4]) {          /* (SNOOP 0.10) a load in the other mode: track 4 becomes it */
+        t4_runtime_reset();
+        song.g[G_T4] = (int16_t)t4;
+    }
+    if (all)
+        t4_stash.ok = 0;                                /* (the other mode's track was the old project's) */
+    else if (t4 != (uint32_t)song.g[G_T4])
+        ntrk = TRK_DRUM;                                /* a section stored in the other mode: track 4 stays as it is */
     for (i = 0; i < PROJ_NG; i++)
         if (all ? i != G_SLOT && i != G_LOAD && i != G_SAVE && i != G_SYNC && i != G_MIDI && i != G_ROUTE && i != G_DRCH &&
                       i != G_INFO
@@ -548,16 +571,17 @@ static void proj_apply(const project_t *p, int all)
         proj_dly_get(p);                                /* (SNOOP) with the delay's other values: a load only */
         proj_rev_get(p);                                /* (SNOOP 0.4) and the reverb's, as its SIZE and DAMP */
     }
-    drum_tw_get(p);                                     /* (2.7) the drum sounds' TUNE and DECAY: a load and a section */
-    for (k = 0; k < NTRK; k++) {
+    if (is_drum(TDRUM) && ntrk == NTRK)
+        drum_tw_get(p);                                 /* (2.7) the drum sounds' TUNE and DECAY: a load and a section */
+    for (k = 0; k < ntrk; k++) {
         track_t *t = &trk[k];
         const proj_trk_t *s = &p->t[k];
-        uint32_t e = k < NPART ? s->engine % NENGINES : 0u;
+        uint32_t e = trk_is_part(k) ? s->engine % NENGINES : 0u;
         t->eng_req = (uint8_t)e;
         t->user = 0;                                    /* (no user preset slot is saved) */
         t->lk_n = 0;                                    /* (the locks in force: the values come from the project) */
         for (i = 0; i < P_COUNT; i++) {                 /* every value back inside its range */
-            const param_desc_t *d = k == TRK_DRUM && i == P_E0 ? &DRUM_KIT_DESC :   /* the drum kit */
+            const param_desc_t *d = is_drum(t) && i == P_E0 ? &DRUM_KIT_DESC :   /* the drum kit */
                                     i >= P_E0 && i <= P_E7 ? &ENGINES[e]->edit[i - P_E0] : &TP[i];
             t->p[i] = (int16_t)clamp(pt_get(s, i), d->min, d->max);
         }
@@ -577,7 +601,7 @@ static void proj_apply(const project_t *p, int all)
             const plock_t *l = &s->lock[i];
             uint32_t id = l->param;
             if (l->step < NSTEP && id < P_COUNT && p_lockable(id)) {
-                const param_desc_t *d = k == TRK_DRUM && id == P_E0 ? &DRUM_KIT_DESC :
+                const param_desc_t *d = is_drum(t) && id == P_E0 ? &DRUM_KIT_DESC :
                                         id >= P_E0 && id <= P_E7 ? &ENGINES[e]->edit[id - P_E0] : &TP[id];
                 t->lock[i].step = l->step;
                 t->lock[i].param = (uint8_t)id;
@@ -588,7 +612,7 @@ static void proj_apply(const project_t *p, int all)
                 t->lock[i].val = 0;
             }
         }
-        if (k != TRK_DRUM)
+        if (!is_drum(t))
             for (i = 0; i < NSTEP; i++) {
                 step_t *st = &t->step[i];
                 uint32_t j;
@@ -695,7 +719,7 @@ UI_SMALL static void project_apply(const project_t *p)
     proj_apply(p, 1);
     song.sel = (uint8_t)(p->sel < NTRK ? p->sel : 0u);
     fm1_irq_on();
-    for (k = 0; k < NPART; k++)                         /* a format 1 project: the default sounds of tracks 2, 3 */
+    for (k = 0; k < NSYN; k++)                          /* a format 1 project: the default sounds of tracks 2, 3 */
         if (p->t[k].preset == 0xFFu) {
             apply_preset_to(&trk[k], TRK_DEF[k][1]);
             steps_clear(&trk[k]);

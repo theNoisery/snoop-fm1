@@ -20,7 +20,7 @@
 #undef main
 #include <assert.h>
 #define PROJ_HOST 1
-static uint32_t trk_def_engine(uint32_t i) { return i < NPART ? i : 0; }
+static uint32_t trk_def_engine(uint32_t i) { return i < NSYN ? i : 0; }
 #include "../firmware/src/project.c"
 static struct { uint8_t force; } ui;
 static uint8_t sync_reload;
@@ -687,7 +687,7 @@ static void t_recmode(void)
     run_block();
     check(ft_on && !song.playing, "REC mode FREE, empty project: the first note starts a free take");
     transport_req = 2; run_block(); ft_bars = 0;
-    for (k = 0; k < 4u; k++) trk_note_off(&trk[k % NPART], 60);
+    for (k = 0; k < 4u; k++) trk_note_off(&trk[k % NSYN], 60);
 
     reset(100);
     song.sel = 0;
@@ -881,15 +881,15 @@ static void cc_push(uint32_t ch, uint32_t cc, uint32_t v);
 static void t_midichan(void)
 {
     uint32_t i, ch = 99;
-    uint8_t eng[NPART], amode[NPART];
+    uint8_t eng[NSYN], amode[NSYN];
     reset(120);
     mi_r = mi_w;
     uint8_t cfg = usb.config;
-    for (i = 0; i < NPART; i++) eng[i] = trk[i].eng_req, amode[i] = (uint8_t)trk[i].p[P_AMODE];
+    for (i = 0; i < NSYN; i++) eng[i] = trk[i].eng_req, amode[i] = (uint8_t)trk[i].p[P_AMODE];
     usb.config = 1;
     song.g[G_ROUTE] = 0;
     song.g[G_CH1] = 2, song.g[G_CH2] = 11, song.g[G_CH3] = 8, song.g[G_DRCH] = 10, song.g[G_CHOTH] = 0;   /* bass 2, pad 11, lead 8 */
-    for (i = 0; i < NPART; i++) trk[i].p[P_AMODE] = 0, trk[i].eng_req = trk[i].engine = 0;
+    for (i = 0; i < NSYN; i++) trk[i].p[P_AMODE] = 0, trk[i].eng_req = trk[i].engine = 0;
     song.sel = 2;
     mclk_push(0x09u | (0x90u | 1u) << 8 | 40u << 16 | 100u << 24);    /* ch 2 */
     mclk_push(0x09u | (0x90u | 10u) << 8 | 64u << 16 | 100u << 24);   /* ch 11 */
@@ -927,7 +927,7 @@ static void t_midichan(void)
     song.sel = 0;
     mi_r = mi_w;
     usb.config = cfg;
-    for (i = 0; i < NPART; i++) {                         /* (as it was for the tests after: engines, no voice) */
+    for (i = 0; i < NSYN; i++) {                         /* (as it was for the tests after: engines, no voice) */
         uint32_t v;
         trk[i].eng_req = trk[i].engine = eng[i], trk[i].p[P_AMODE] = amode[i];
         for (v = 0; v < NVOICE; v++) trk[i].v[v].active = trk[i].v[v].gate = 0, trk[i].v[v].stage = 0;
@@ -971,7 +971,7 @@ static void mf_prep(void)
     reset(120);
     mi_r = mi_w;
     song.g[G_ROUTE] = 0, song.g[G_CH1] = 1, song.g[G_CH2] = 2, song.g[G_CH3] = 3, song.g[G_CHOTH] = 0, song.g[G_DRCH] = 10;
-    for (i = 0; i < NPART; i++) {
+    for (i = 0; i < NSYN; i++) {
         trk[i].p[P_AMODE] = 0, trk[i].p[P_AHOLD] = 0, trk[i].eng_req = trk[i].engine = 0, trk[i].p[P_REL] = 0;
         for (v = 0; v < NVOICE; v++)
             trk[i].v[v].active = trk[i].v[v].gate = 0, trk[i].v[v].stage = 0;
@@ -981,9 +981,9 @@ static void mf_prep(void)
 }
 static void t_midifix(void)
 {
-    uint8_t eng[NPART];
+    uint8_t eng[NSYN];
     uint32_t v, i;
-    for (i = 0; i < NPART; i++)
+    for (i = 0; i < NSYN; i++)
         eng[i] = trk[i].eng_req;
     mf_prep();                                        /* the pedal on a SEL channel, the track changed while it is down */
     song.sel = 0;
@@ -1073,7 +1073,7 @@ static void t_midifix(void)
     for (v = 0; v < 30u; v++) run_block();
     check(!sounding(&trk[1], 70), "2.6: GLO > MIDI CH2 changed with a note held on it: the note does not stay stuck");
     song.g[G_CH2] = 2;
-    for (i = 0; i < NPART; i++) {
+    for (i = 0; i < NSYN; i++) {
         trk[i].eng_req = trk[i].engine = eng[i];
         for (v = 0; v < NVOICE; v++)
             trk[i].v[v].active = trk[i].v[v].gate = 0, trk[i].v[v].stage = 0;

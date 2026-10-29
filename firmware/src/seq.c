@@ -77,7 +77,7 @@ static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
 
 static uint32_t trk_midi_ch(uint32_t i)    /* MIDI channel 0..15 of track i (keys -> MIDI out); 2.6: GLO > MIDI */
 {                                          /* (2.6: OFF is OFF, in and out: 0xFF, nothing sent) */
-    int32_t c = i < NPART ? song.g[G_CH1 + i] : song.g[G_DRCH];
+    int32_t c = i < NSYN ? song.g[G_CH1 + i] : song.g[G_DRCH];   /* (track 4, drums or synth: GLO > DRUMS > CH) */
     return c >= 1 && c <= 16 ? (uint32_t)c - 1u : 0xFFu;
 }
 /* a note on (vel > 0) / off to MIDI OUT on channel ch (trk_midi_ch: 0xFF, the track's MIDI OFF: nothing) */
@@ -2067,11 +2067,11 @@ static void roll_start(uint32_t k, track_t *t, uint32_t note, uint32_t lvl)
 
 static void roll_end(uint32_t r)
 {
-    if (roll[r].on && roll[r].off && roll[r].trk != TRK_DRUM) {
+    if (roll[r].on && roll[r].off && !is_drum(&trk[roll[r].trk % NTRK])) {
         trk_note_off(&trk[roll[r].trk % NTRK], roll[r].note);
         seq_out_off(&trk[roll[r].trk % NTRK], roll[r].note);
     }
-    if (roll[r].on && roll[r].trk == TRK_DRUM)
+    if (roll[r].on && is_drum(&trk[roll[r].trk % NTRK]))
         seq_out_off(&trk[TRK_DRUM], LANE_NOTE[roll[r].note & 15u]);
     roll[r].on = 0;
 }
@@ -2943,7 +2943,7 @@ static track_t *midi_own(uint32_t ch)
     uint32_t i;
     if (song.g[G_DRCH] && ch + 1u == (uint32_t)song.g[G_DRCH])
         return TDRUM;
-    for (i = 0; i < NPART; i++)
+    for (i = 0; i < NSYN; i++)
         if (ch + 1u == (uint32_t)song.g[G_CH1 + i])
             return &trk[i];
     return 0;
@@ -3451,7 +3451,7 @@ static void events_block(uint32_t n)
                 t->arp_note = t->arp_ch[0] = t->arp_ch[1] = t->arp_ch[2] = 0;
             }
         }
-        if (i < NPART)
+        if (trk_is_part(i))
             engine_block(t);                          /* engine switch: fade, then switch (voice.c) */
         /* ARP turned off, or HOLD released with no key down: drop the latched chord */
         if ((t->armp && !t->p[P_AMODE]) || (t->aholdp && !t->p[P_AHOLD] && !t->arp_phys)) {
@@ -3598,7 +3598,8 @@ static void events_block(uint32_t n)
     click_tick();
     roll_block(adv);
     for (i = 0; i < NPART; i++)
-        arp_tick(&trk[i], adv);
+        if (trk_is_part(i))
+            arp_tick(&trk[i], adv);
     if (song.playing) {
         song.tick++;
         clk_pos += adv;
@@ -3611,4 +3612,107 @@ static void events_block(uint32_t n)
         live_u += adv;                             /* (SNOOP) SYNC LOOP */
 #endif
     }
+}
+
+/* ---------------------------------------------- (SNOOP 0.10) track 4: drums or synth --- */
+/* GLO > TRACK 4 (song.g[G_T4], core.h is_drum): track 4 the drum track (SLOOP's) or a fourth synth part. Its pattern
+ * (drum steps or synth steps: the same 10 bytes, read two ways), its parameters, locks and nudges belong to the mode:
+ * the other mode's are kept here (t4_stash) while the session lasts, so DRUMS -> SYNTH -> DRUMS gives the beat back.
+ * A project holds the mode it was saved in (project.c proj_t4_put) and only that mode's track. */
+static struct {
+    uint8_t ok, mode;                                    /* holds the track as it was in mode `mode` */
+    uint8_t eng, preset;
+    int16_t p[P_COUNT];
+    step_t step[NSTEP];
+    int8_t micro[NSTEP];
+    uint8_t fill[NSTEP / 4];
+    plock_t lock[NLOCK];
+} t4_stash;
+static void t4_stash_swap(void)                          /* track 4 <-> the stash (the stash's mode not checked) */
+{
+    track_t *t = TDRUM;
+    uint32_t i;
+    for (i = 0; i < P_COUNT; i++) {
+        int16_t v = t->p[i];
+        t->p[i] = t4_stash.p[i], t4_stash.p[i] = v;
+    }
+    for (i = 0; i < NSTEP; i++) {
+        step_t s = t->step[i];
+        int8_t m = t->micro[i];
+        t->step[i] = t4_stash.step[i], t4_stash.step[i] = s;
+        t->micro[i] = t4_stash.micro[i], t4_stash.micro[i] = m;
+    }
+    for (i = 0; i < NSTEP / 4u; i++) {
+        uint8_t f = t->fill[i];
+        t->fill[i] = t4_stash.fill[i], t4_stash.fill[i] = f;
+    }
+    for (i = 0; i < NLOCK; i++) {
+        plock_t l = t->lock[i];
+        t->lock[i] = t4_stash.lock[i], t4_stash.lock[i] = l;
+    }
+    {
+        uint8_t e = t->eng_req, pr = t->preset;
+        t->eng_req = t->engine = t4_stash.eng, t->preset = t4_stash.preset;
+        t4_stash.eng = e, t4_stash.preset = pr;
+    }
+}
+/* what sounds or runs on track 4 stops at once, its engine, INSERT and FILTER state start over: the mode is about to
+ * change (or did: a project in the other mode). The audio IRQ off (a project load: already) */
+static void t4_runtime_reset(void)
+{
+    track_t *t = TDRUM;
+    uint32_t i;
+    for (i = 0; i < NVOICE; i++) {
+        t->v[i].active = 0;
+        t->v[i].gate = 0;
+        t->v[i].stage = 0;
+    }
+    for (i = 0; i < NDRUM; i++)
+        drums.v[i].active = 0;
+    t->seq_n = 0, t->seq_hold = 0, t->nheld = 0, t->arp_phys = 0, t->arp_note = 0;
+    t->arp_ch[0] = t->arp_ch[1] = t->arp_ch[2] = 0;
+    t->nmono = 0, t->mono_note = 0, t->xp_n = 0, t->pold = 0, t->xf_on = 0, t->xf = 0;
+    t->lk_n = 0, t->ins_run = 0, t->user = 0, t->peak = 0;
+    eng_arena_own[TRK_DRUM] = 0;                         /* (the next engine claims its arena afresh) */
+    fm6_slot[TRK_DRUM] = 0xFFu;
+    fm6_pend &= (uint8_t)~(1u << TRK_DRUM);
+    fm6_eff[TRK_DRUM].ok = 0;
+    phys_lay[TRK_DRUM] = 0;
+    for (i = TRK_DRUM; i < NPART + 4u; i++)              /* its INSERT as a part (ins[3]) and the drums' four */
+        memset(&ins[i], 0, sizeof ins[i]);
+    memset(&tflt[TRK_DRUM], 0, sizeof tflt[TRK_DRUM]);
+    if (undo.valid && undo.trk == TRK_DRUM)
+        undo.valid = 0;                                  /* (an undo would bring the other mode's steps back) */
+    panic_req |= (uint8_t)(1u << TRK_DRUM);              /* (the rest of what it held: seq.c, the next block) */
+}
+/* to mode syn (0 DRUMS, 1 SYNTH): the track swapped with the stash when the stash holds that mode, else 0 (the caller
+ * sets the mode's defaults: ui_t4.c). The audio IRQ off */
+static int t4_switch(uint32_t syn)
+{
+    int had = t4_stash.ok && t4_stash.mode == syn;
+    syn = syn ? 1u : 0u;
+    if ((uint32_t)song.g[G_T4] == syn)
+        return 1;
+    t4_runtime_reset();
+    if (!had) {                                          /* the stash: this mode's track; the track: emptied */
+        track_t *t = TDRUM;
+        uint32_t i;
+        for (i = 0; i < P_COUNT; i++)
+            t4_stash.p[i] = t->p[i], t->p[i] = i < P_E0 ? TP[i].def : 0;
+        memcpy(t4_stash.step, t->step, sizeof t4_stash.step);
+        memcpy(t4_stash.micro, t->micro, sizeof t4_stash.micro);
+        memcpy(t4_stash.fill, t->fill, sizeof t4_stash.fill);
+        memcpy(t4_stash.lock, t->lock, sizeof t4_stash.lock);
+        t4_stash.eng = t->eng_req, t4_stash.preset = t->preset;
+        song.g[G_T4] = (int16_t)syn;                     /* (steps_clear: the new mode's empty steps) */
+        steps_clear(t);
+        memset(t->micro, 0, sizeof t->micro);
+        t->eng_req = t->engine = 0, t->preset = 0;
+    } else {
+        t4_stash_swap();
+    }
+    t4_stash.ok = 1;
+    t4_stash.mode = (uint8_t)(syn ^ 1u);
+    song.g[G_T4] = (int16_t)syn;
+    return had;
 }

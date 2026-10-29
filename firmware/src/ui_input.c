@@ -464,14 +464,16 @@ UI_SMALL static void project_new(void)
     uint32_t i;
     transport_req = 2;
     panic_req = (1u << NTRK) - 1u;
+    t4_set(0);                                          /* (SNOOP 0.10) a new project: track 4 the drums */
+    t4_stash.ok = 0;
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         undo_mark(t, (undo_sess += 4u) | 3u);
         fm1_irq_off();
-        if (i < NPART)
+        if (trk_is_part(i))
             sound_change(t);                            /* (2.6: what sounds fades out with its own sound) */
         track_defaults(t);
-        if (i < NPART) {
+        if (trk_is_part(i)) {
             set_engine_of(t, TRK_DEF[i][0]);
             apply_preset_to(t, TRK_DEF[i][1]);
         }
@@ -556,6 +558,19 @@ UI_SMALL static void edit_param(uint32_t slot, int32_t steps)
     d = page_desc(pg, slot, &vp);
     if (!d || !vp || d->max == d->min)
         return;
+    if (pg->scope == SC_GLOBAL && id == G_T4) {         /* (SNOOP 0.10) TRACK 4: one detent arms, a second one switches */
+        uint32_t want = steps > 0 ? 1u : 0u;
+        if (want == (uint32_t)song.g[G_T4])
+            return;
+        if (ui.arm != G_T4) {
+            ui.arm = (uint8_t)G_T4;
+            ui.arm_t = 90;
+            ui_say("AGAIN: TRACK 4 ", want ? "SYNTH" : "DRUMS");
+            return;
+        }
+        t4_set(want);
+        return;
+    }
     v = d == &DRUM_KIT_DESC ? kit_step(*vp, steps)       /* (SNOOP: over the kits taken out, */
       : d->names == SMP_ALL_NAMES || d->names == ST_SRC_NAMES ? src_step(d, *vp, steps)   /* the sets emptied) */
       : d->names == ESYNC_NAMES || d->names == N_IBITS || d->names == N_IRATE ? names_turn(d, *vp, steps)   /* (a name a detent) */

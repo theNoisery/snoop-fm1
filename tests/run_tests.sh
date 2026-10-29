@@ -79,6 +79,10 @@ $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/ui_pages_test" tes
 run "live UI: pages, layers (punch, steps, erase, roll, key, mix), holds, drums, REC, fuzz" "$OUT/ui_pages_test" "$OUT"
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/vis_test" tests/vis_test.c -lm
 run "visualiser (SNOOP 0.9): nine styles draw and move, HEXAGON balls, TRACKS needles, draw time" "$OUT/vis_test"
+$CC -O1 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/t4_test" tests/t4_test.c -lm
+run "SNOOP 0.10 TRACK 4: DRUMS / SYNTH (the switch, its sound, steps, voices, LEVEL, MIDI channel, back again)" "$OUT/t4_test" "$OUT"
+$CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/t4_proj_test" tests/t4_proj_test.c -lm
+run "SNOOP 0.10 TRACK 4 in a project (saved / loaded as SYNTH, SLOOP projects the drums, sections in the other mode)" "$OUT/t4_proj_test"
 # no divide by 0 (the FM-1 runs with the div0 trap off, hal/fm1_irq.h: a real one would give a wrong value
 # silently): the UI fuzz, the sequencer, the projects and a minute of random live use, with UBSan
 UBSAN="${CC_UB:-cc} -O1 -w -fsanitize=integer-divide-by-zero -fno-sanitize-recover=integer-divide-by-zero -Ibuild/gen -Ifirmware/src -Ifirmware/hal"

@@ -66,7 +66,7 @@ static int64_t dcs[2];
 static int parts_free(void)
 {
     uint32_t p, i;
-    for (p = 0; p < NPART; p++)
+    for (p = 0; p < NSYN; p++)
         for (i = 0; i < NVOICE; i++)
             if (trk[p].v[i].active)
                 return 0;
@@ -79,7 +79,7 @@ static int parts_free(void)
 static uint32_t sounding(void)                 /* part voices sounding (not the ones fading for another part) */
 {
     uint32_t p, i, n = 0;
-    for (p = 0; p < NPART; p++)
+    for (p = 0; p < NSYN; p++)
         for (i = 0; i < NVOICE; i++)
             n += trk[p].v[i].active && trk[p].v[i].stage != 4u;
     return n;
@@ -350,10 +350,10 @@ static void job_cpu(const job_t *j)
 {
     static const uint8_t NOTES[8] = {48, 52, 55, 59, 60, 64, 67, 71};
     const uint8_t (*parts)[3] = j->parts;
-    uint32_t p, i, k, nb = FS / CTL, drums_on = parts[NPART][0];
+    uint32_t p, i, k, nb = FS / CTL, drums_on = parts[NSYN][0];
     uint64_t i0, t0;
     host_tracks_init();
-    for (p = 0; p < NPART; p++) {
+    for (p = 0; p < NSYN; p++) {
         host_preset(&trk[p], parts[p][0], parts[p][1]);
         trk[p].p[P_VOICE] = V_POLY;
         trk[p].p[P_SUS] = 127;
@@ -494,13 +494,13 @@ static int held_gates(char *who, size_t wn)
 {
     uint32_t p, i, n = 0;
     who[0] = 0;
-    for (p = 0; p < NPART; p++)
+    for (p = 0; p < NSYN; p++)
         if (trk[p].nheld) {                        /* a key the ARP still thinks is down: it plays on */
             if (!n)
                 snprintf(who, wn, "part %u ARP still holds %u notes (first %u)", p + 1u, trk[p].nheld, trk[p].held[0]);
             n++;
         }
-    for (p = 0; p < NPART; p++)
+    for (p = 0; p < NSYN; p++)
         for (i = 0; i < NVOICE; i++)
             if (trk[p].v[i].active && trk[p].v[i].gate) {
                 if (!n)
@@ -522,10 +522,10 @@ static void midi_pkt(uint32_t st, uint32_t d1, uint32_t d2)   /* as usb.c: the q
 static int chk_budget(char *msg, uint32_t n)
 {
     static const uint8_t E[3] = {0, 1, 5};
-    uint8_t held[NPART][128] = {{0}};
+    uint8_t held[NSYN][128] = {{0}};
     uint32_t p, k, worst = 0, vworst = 0, fading = 0, kills0 = voice_kills;
     host_tracks_init();
-    for (p = 0; p < NPART; p++) {
+    for (p = 0; p < NSYN; p++) {
         host_preset(&trk[p], E[p], 1);
         trk[p].p[P_VOICE] = V_POLY;
         trk[p].p[P_AMODE] = 0;
@@ -535,7 +535,7 @@ static int chk_budget(char *msg, uint32_t n)
         uint32_t i, a = 0, va = 0;
         if (k % 4u == 0u) {
             uint32_t note = 36u + rnd(48);
-            p = rnd(NPART);
+            p = rnd(NSYN);
             if (held[p][note]) {
                 trk_note_off(&trk[p], note);
                 held[p][note] = 0;
@@ -545,9 +545,9 @@ static int chk_budget(char *msg, uint32_t n)
             }
         }
         blk();
-        for (p = 0; p < NPART; p++)
+        for (p = 0; p < NSYN; p++)
             for (i = 0; i < NVOICE; i++) {
-                static uint8_t fade_blocks[NPART][NVOICE];
+                static uint8_t fade_blocks[NSYN][NVOICE];
                 uint32_t f4 = trk[p].v[i].active && trk[p].v[i].stage == 4u;
                 a += trk[p].v[i].active && !f4;          /* sounding (a stolen voice fades out over KILL_BLOCKS) */
                 va += p == 2u && trk[p].v[i].active && !f4;
@@ -557,7 +557,7 @@ static int chk_budget(char *msg, uint32_t n)
         worst = a > worst ? a : worst;
         vworst = va > vworst ? va : vworst;
     }
-    for (p = 0; p < NPART; p++)
+    for (p = 0; p < NSYN; p++)
         for (k = 0; k < 128u; k++)
             if (held[p][k])
                 trk_note_off(&trk[p], k);
@@ -581,7 +581,7 @@ static int chk_steal_fade(char *msg, uint32_t n)
     double worst = 0;
     int32_t wat = 0, wcalm = 0;
     host_tracks_init();
-    for (p = 0; p < NPART; p++)
+    for (p = 0; p < NSYN; p++)
         xfade_sine(&trk[p]);
     for (f = 0; f < frames; f += CTL) {
         uint32_t ms = f * 1000u / FS, k0 = voice_kills;
@@ -628,7 +628,7 @@ static int chk_keep(char *msg, uint32_t n, uint32_t mode)
     trk[0].p[P_VOICE] = (int16_t)mode;
     trk[0].p[P_AMODE] = 0;
     trk[0].p[P_SUS] = 100;
-    for (k = 1; k < NPART; k++) {
+    for (k = 1; k < NSYN; k++) {
         host_preset(&trk[k], 1, 1);
         trk[k].p[P_VOICE] = V_POLY;
         trk[k].p[P_AMODE] = 0;
@@ -697,7 +697,7 @@ static int chk_hang(char *msg, uint32_t n)
     int bad = 0;
     for (round = 0; round < 3u && !bad; round++) {
         host_tracks_init();
-        for (k = 0; k < NPART; k++) {
+        for (k = 0; k < NSYN; k++) {
             host_preset(&trk[k], rnd(NENGINES), rnd(4));
             trk[k].p[P_VOICE] = (int16_t)rnd(4);
             trk[k].p[P_AMODE] = rnd(3) == 0 ? (int16_t)(1 + rnd(4)) : 0;
@@ -740,7 +740,7 @@ static int chk_hang(char *msg, uint32_t n)
             uint32_t cap = fpos + FREE_CAP_S * FS;
             while (!parts_free() && fpos < cap)
                 blk();
-            for (c = 0; c < NPART * NVOICE && !parts_free() && !bad; c++) {
+            for (c = 0; c < NSYN * NVOICE && !parts_free() && !bad; c++) {
                 const voice_t *v = &trk[c / NVOICE].v[c % NVOICE];
                 if (v->active) {
                     bad = 2;
@@ -826,7 +826,7 @@ int main(int argc, char **argv)
     static const char *const SN[6] = {"dry", "chorus", "delay", "reverb", "all", "dist"};
     static const uint8_t MODE_E[3][2] = {{0, 0}, {1, 1}, {5, 0}};   /* engine, preset */
     static const uint8_t SEND_E[2][2] = {{0, 7}, {1, 0}};   /* ANALOG TRAP PLUCK, DIGITAL RHODES */
-    static uint8_t cpu_parts[MAXJ][NPART + 1][3];
+    static uint8_t cpu_parts[MAXJ][NSYN + 1][3];
     static kv_t gold[MAXJ], cpu[MAXJ];
     uint32_t ng, nc, e, pi, i, g0, g1, c0, c1, k0, ncpu = 0;
     uint32_t g_changed = 0, g_new = 0, g_gone = 0, h_fail = 0, c_fail = 0, c_warn = 0, k_fail = 0, crash = 0;
@@ -922,7 +922,7 @@ int main(int argc, char **argv)
         cpu_parts[ncpu][0][0] = ENGI_FM6, cpu_parts[ncpu][0][1] = 0, cpu_parts[ncpu][0][2] = 8;
         cpu_parts[ncpu][1][0] = ENGI_GRAIN, cpu_parts[ncpu][1][1] = 0, cpu_parts[ncpu][1][2] = 8;
         cpu_parts[ncpu][2][0] = 6, cpu_parts[ncpu][2][1] = 3, cpu_parts[ncpu][2][2] = 8;
-        cpu_parts[ncpu][NPART][0] = 1;
+        cpu_parts[ncpu][NSYN][0] = 1;
         j->parts = (const uint8_t (*)[3])cpu_parts[ncpu++];
         j->e = 0xFF;
         j = add(J_CPU, "cpu/mix/3parts_phys_noise_drums");     /* (2.5 exp) PHYS SYMP, PHYS MODAL, NOISE */
@@ -930,7 +930,7 @@ int main(int argc, char **argv)
         cpu_parts[ncpu][0][0] = ENGI_PHYS, cpu_parts[ncpu][0][1] = 7, cpu_parts[ncpu][0][2] = 8;
         cpu_parts[ncpu][1][0] = ENGI_PHYS, cpu_parts[ncpu][1][1] = 3, cpu_parts[ncpu][1][2] = 8;
         cpu_parts[ncpu][2][0] = ENGI_NOISE, cpu_parts[ncpu][2][1] = 1, cpu_parts[ncpu][2][2] = 8;
-        cpu_parts[ncpu][NPART][0] = 1;
+        cpu_parts[ncpu][NSYN][0] = 1;
         j->parts = (const uint8_t (*)[3])cpu_parts[ncpu++];
         j->e = 0xFF;
         j = add(J_CPU, "cpu/mix/idle");
@@ -939,7 +939,7 @@ int main(int argc, char **argv)
         j->e = 0xFF;
         j = add(J_CPU, "cpu/mix/idle_drums");
         memset(cpu_parts[ncpu], 0, sizeof cpu_parts[ncpu]);
-        cpu_parts[ncpu][NPART][0] = 1;
+        cpu_parts[ncpu][NSYN][0] = 1;
         j->parts = (const uint8_t (*)[3])cpu_parts[ncpu++];
         j->e = 0xFF;
         j = add(J_CPU, "cpu/mix/3parts_full_drums");
@@ -947,7 +947,7 @@ int main(int argc, char **argv)
         cpu_parts[ncpu][0][0] = 1, cpu_parts[ncpu][0][1] = 0, cpu_parts[ncpu][0][2] = 8;
         cpu_parts[ncpu][1][0] = 2, cpu_parts[ncpu][1][1] = 0, cpu_parts[ncpu][1][2] = 8;
         cpu_parts[ncpu][2][0] = 5, cpu_parts[ncpu][2][1] = 0, cpu_parts[ncpu][2][2] = 4;
-        cpu_parts[ncpu][NPART][0] = 1;
+        cpu_parts[ncpu][NSYN][0] = 1;
         j->parts = (const uint8_t (*)[3])cpu_parts[ncpu++];
         j->e = 0xFF;
         j->e = 0xFF;

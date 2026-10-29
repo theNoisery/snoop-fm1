@@ -193,15 +193,15 @@ int main(int argc, char **argv)
     {
         int32_t o[2 * CTL];
         uint32_t blk, nblk = secs * (FS / CTL), i, p, switches = 0, flips = 0, maxabs = 0, hung = 0, tailmax = 0;
-        uint8_t held[NPART][128];
+        uint8_t held[NSYN][128];
         memset(held, 0, sizeof held);
         host_tracks_init();
-        for (p = 0; p < NPART; p++)
+        for (p = 0; p < NSYN; p++)
             host_preset(&trk[p], 0, 0);
         for (blk = 0; blk < nblk; blk++) {
             if (frnd(64) == 0) {                        /* ~ every 46 ms an event */
                 uint32_t ev = frnd(100);
-                p = frnd(NPART);
+                p = frnd(NSYN);
                 if (ev < 12) {                          /* engine and preset, the UI's way */
                     uint32_t e = frnd(argc > 2 ? (uint32_t)atoi(argv[2]) : NENGINES);
                     host_preset_req(&trk[p], e, frnd(ENGINES[e]->npresets));
@@ -240,7 +240,7 @@ int main(int argc, char **argv)
                     maxabs = v;
             }
         }
-        for (p = 0; p < NPART; p++)
+        for (p = 0; p < NSYN; p++)
             for (i = 0; i < 128u; i++)
                 if (held[p][i])
                     trk_note_off(&trk[p], i);
@@ -253,7 +253,7 @@ int main(int argc, char **argv)
                         tailmax = v;
                 }
         }
-        for (p = 0; p < NPART; p++)
+        for (p = 0; p < NSYN; p++)
             for (i = 0; i < NVOICE; i++)
                 hung += trk[p].v[i].active;
         printf("fuzz: %u s, %u engine switches, %u PHYS model flips, %u arena claims, peak %u\n", secs, switches, flips,
@@ -275,12 +275,12 @@ int main(int argc, char **argv)
         for (pass = 0; pass < 2u; pass++) {
             fz = 0x13579BDFu;
             host_tracks_init();
-            for (p = 0; p < NPART; p++) {
+            for (p = 0; p < NSYN; p++) {
                 host_preset(&trk[p], ENGI_PHYS, p == 0 ? 2u : p == 1 ? 7u : 0u);
             }
             for (blk = 0; blk < 120u * (FS / CTL); blk++) {
                 if (frnd(64) == 0) {
-                    p = frnd(NPART);
+                    p = frnd(NSYN);
                     if (frnd(4) == 0) {
                         uint32_t md = frnd(4);
                         if (pass)
@@ -300,7 +300,7 @@ int main(int argc, char **argv)
                         peak[pass] = v;
                 }
             }
-            for (p = 0; p < NPART; p++)
+            for (p = 0; p < NSYN; p++)
                 trk_all_off(&trk[p]);
             for (blk = 0; blk < 20u * (FS / CTL); blk++) {
                 mix_block(o, CTL);
@@ -312,7 +312,7 @@ int main(int argc, char **argv)
                     }
             }
             if (pass)
-                for (p = 0; p < NPART; p++)
+                for (p = 0; p < NSYN; p++)
                     for (i = 0; i < NVOICE; i++)
                         hung += trk[p].v[i].active;
         }

@@ -8,9 +8,10 @@
 #include <stdint.h>
 #define NVOICE 8                 /* voices per part, and the budget shared by all parts */
 #define NPOLY 8
-#define NPART 3                  /* synth parts: tracks 1..3 */
+#define NPART 4                  /* synth parts at most: tracks 1..3, and track 4 when it is a synth (SNOOP 0.10) */
+#define NSYN 3                   /* the tracks always synth parts: 1..3 (SLOOP's NPART) */
 #define NTRK 4                   /* + the drum track */
-#define TRK_DRUM 3
+#define TRK_DRUM 3               /* track 4: the drums, or (SNOOP 0.10, GLO > TRACK 4) a fourth synth part */
 enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #define NSTEP 64
 #define HALF_FRAMES 256          /* I2S half buffer: 5.8 ms at 44.1 kHz */
@@ -112,6 +113,9 @@ enum {                          /* global parameters */
     G_DSYNC, G_DMS,             /* SNOOP 0.3, DLY 3: SYNC (TIME a note value of the tempo, as SLOOP) or FREE (TIME in ms) */
     G_RTYPE, G_RSZ, G_RPRE, G_RMOD,   /* SNOOP 0.4, REV 2: ROOM (SLOOP's) / PLATE / SPACE (rev_plate.c), their SIZE,
                                        * pre-delay (ms), modulation. In a project (project.c proj_rev_put) */
+    G_T4,                       /* SNOOP 0.10, GLO > TRACK 4: track 4 DRUMS (0, SLOOP's) or SYNTH (1, a fourth synth part).
+                                 * Set only by t4_set (ui_t4.c: the track's data swapped, IRQ off); in a project
+                                 * (project.c proj_t4_put) */
     G_COUNT
 };
 
@@ -407,7 +411,9 @@ static int32_t thr_rev, thr_dly;
 static inline int32_t send_thr(int32_t s, int32_t g) { return g ? s + (((127 * 258 - s) * g) >> 15) : s; }   /* s 0..32766 */
 #define TSEL (&trk[song.sel])    /* the selected track */
 #define TDRUM (&trk[TRK_DRUM])
-static int is_drum(const track_t *t) { return t == TDRUM; }
+/* (SNOOP 0.10) track 4 is the drum track unless GLO > TRACK 4 is SYNTH: then it is a fourth synth part */
+static int is_drum(const track_t *t) { return t == TDRUM && !song.g[G_T4]; }
+static int trk_is_part(uint32_t i) { return i < NSYN || (i == TRK_DRUM && song.g[G_T4]); }   /* track i plays an engine */
 /* silent: MUTE, or another track is soloed */
 static int trk_silent(const track_t *t)
 {

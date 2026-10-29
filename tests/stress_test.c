@@ -165,7 +165,7 @@ static void t_fuzz(uint32_t nframes)
     }
     song.sel = 0; go_home(); ui.force = 1;
     song.g[G_BPM] = 140;
-    for (k = 0; k < NPART; k++) {
+    for (k = 0; k < NSYN; k++) {
         host_preset_req(&trk[k], ENGI_FM6, rn(ENGINES[ENGI_FM6]->npresets));
         chord_steps(k);
         trk[k].p[P_CHORD] = 3;
@@ -190,23 +190,23 @@ static void t_fuzz(uint32_t nframes)
         } else if (r < 47) {
             fm1_in.notes = 0;
         } else if (r < 49) {
-            uint32_t t = rn(NPART);
+            uint32_t t = rn(NSYN);
             trk[t].p[P_STRUM] = (int16_t)((int)rn(121) - 60); strums++;
         } else if (r < 50) {
-            trk[rn(NPART)].p[P_VLEAD] = (int16_t)rn(2);
+            trk[rn(NSYN)].p[P_VLEAD] = (int16_t)rn(2);
         } else if (r < 53) {
             trk[rn(NTRK)].p[P_TFLT] = (int16_t)((int)rn(128) - 64);
         } else if (r < 54) {
-            trk[rn(NPART)].p[P_CHORD] = (int16_t)rn(6);
+            trk[rn(NSYN)].p[P_CHORD] = (int16_t)rn(6);
         } else if (r < 55) {
-            uint32_t t = rn(NPART), e = rn(3) ? ENGI_FM6 : rn(NENGINES);
+            uint32_t t = rn(NSYN), e = rn(3) ? ENGI_FM6 : rn(NENGINES);
             host_preset_req(&trk[t], e, rn(ENGINES[e]->npresets));
         } else if (r < 56) {
             trk[rn(NTRK)].p[P_SDIV] = (int16_t)rn(NDIV_STEP);
         } else if (r < 57) {
             song.g[G_BPM] = (int16_t)(60 + rn(181));
         } else if (r < 58) {
-            chord_steps(rn(NPART));
+            chord_steps(rn(NSYN));
         } else if (r < 59) {
             trk[rn(NTRK)].p[P_SLCR] = (int16_t)rn(3);
         } else if (r < 60) {
@@ -221,6 +221,7 @@ static void t_fuzz(uint32_t nframes)
         } else if (r < 64) {
             vis_style = (uint8_t)rn(VIS_N);
             if (rn(8) == 0 && !ui.menu) { go_home(); vis_open(); }   /* (back to TRACKS, the visualiser open) */
+            if (rn(6) == 0) t4_set(rn(2));             /* (SNOOP 0.10) track 4 to DRUMS / SYNTH, playing or not */
         } else if (r < 65) {
             trk[rn(NTRK)].p[P_MUTE] = (int16_t)(rn(4) == 0);
         }
@@ -252,7 +253,7 @@ static void t_fuzz(uint32_t nframes)
     for (f = 0; f < 30u * 1000u / 16u; f++) {           /* (a slow FM6 release, R4 35: several seconds) */
         uint32_t a = 0;
         sframe();
-        for (k = 0; k < NPART; k++) for (i = 0; i < NVOICE; i++) a += trk[k].v[i].active;
+        for (k = 0; k < NSYN; k++) for (i = 0; i < NVOICE; i++) a += trk[k].v[i].active;
         for (i = 0; i < NDRUM; i++) a += drums.v[i].active;
         for (i = 0; i < STQ; i++) a += stq[i].on;
         if (!a && f >= 2u * 1000u / 16u) break;
@@ -261,8 +262,12 @@ static void t_fuzz(uint32_t nframes)
     printf("end: everything let go and stopped: all voices free after %.1f s (at most 30)\n", f * 0.016);
     scheck(!song.playing, "end: stopped");
     for (k = 0; k < NPART; k++)
-        for (i = 0; i < NVOICE; i++)
+        for (i = 0; i < NVOICE; i++) {
+            if (trk[k].v[i].active)
+                printf("end: track %u voice %u: note %u gate %u stage %u (engine %u, T4 %d)\n", k + 1u, i, trk[k].v[i].note,
+                       trk[k].v[i].gate, trk[k].v[i].stage, trk[k].engine, song.g[G_T4]);
             scheck(!trk[k].v[i].active, "end: no synth voice left sounding");
+        }
     for (i = 0; i < NDRUM; i++)
         scheck(!drums.v[i].active, "end: no drum hit left");
     for (i = 0; i < STQ; i++)
@@ -293,7 +298,7 @@ static double bench_blocks(uint32_t on, uint32_t nb)
     int rep;
     for (rep = 0; rep < 5; rep++) {
         sd = 99u;
-        for (k = 0; k < NPART; k++) {
+        for (k = 0; k < NSYN; k++) {
             uint32_t i;
             trk[k].p[P_STRUM] = on ? 60 : 0;
             trk[k].p[P_VLEAD] = (int16_t)on;
@@ -348,7 +353,7 @@ static void t_bench(void)
     double off, on, home, v[VIS_N], a = 0, b = 0;
     uint32_t s, i;
     static const char *const TXT[] = {"120.0", "-64", "FILTER", "SLOOP", "C#m7", "2BAR"};
-    for (i = 0; i < NPART; i++) host_preset(&trk[i], ENGI_FM6, i);
+    for (i = 0; i < NSYN; i++) host_preset(&trk[i], ENGI_FM6, i);
     off = bench_blocks(0, 6000);
     on = bench_blocks(1, 6000);
     printf("bench: worst case (3 FM6 parts, 4-note chords x2 ratchets, 1/16 at 240 BPM): %.2f us a block without "
@@ -385,7 +390,7 @@ int main(int argc, char **argv)
     settings.palette = 4;
     palette_set(4);
     host_tracks_init();
-    for (i = 0; i < NPART; i++) { set_engine_of(&trk[i], TRK_DEF[i][0]); apply_preset_to(&trk[i], TRK_DEF[i][1]); trk[i].engine = trk[i].eng_req; }
+    for (i = 0; i < NSYN; i++) { set_engine_of(&trk[i], TRK_DEF[i][0]); apply_preset_to(&trk[i], TRK_DEF[i][1]); trk[i].engine = trk[i].eng_req; }
     TDRUM->p[P_E0] = DRUM_SAMPLED;
     song.g[G_BPM] = 120;
     go_home(); ui.force = 1;

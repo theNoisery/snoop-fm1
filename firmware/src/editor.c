@@ -715,6 +715,8 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
         if (cmd == ED_SET && na >= 4u) {
             if (a[0] == 1 && a[1] == G_ENGSEL) {          /* engine change: the safe path */
                 set_engine((uint32_t)clamp(ed_rv(a + 2), 0, NENGINES - 1));
+            } else if (a[0] == 1 && a[1] == G_T4) {       /* (SNOOP 0.10) TRACK 4: the track's data swapped */
+                t4_set((uint32_t)clamp(ed_rv(a + 2), 0, 1));
             } else if (d->max > d->min) {
                 *vp = (int16_t)clamp(ed_rv(a + 2), d->min, d->max);
             }
@@ -975,7 +977,7 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
         for (i = 0; i < NTRK; i++) {
             ed_b(ed_eng(&trk[i]));
             ed_b(trk[i].preset);
-            ed_v(i == TRK_DRUM ? song.g[G_DRLVL] : trk[i].p[P_LEVEL]);
+            ed_v(is_drum(&trk[i]) ? song.g[G_DRLVL] : trk[i].p[P_LEVEL]);
             ed_b(trk[i].p[P_MUTE] != 0);
             ed_b((song.rec >> i) & 1u);
         }
@@ -987,11 +989,11 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
         if (na < 1u || a[0] >= NTRK)
             return;
         t = &trk[a[0]];
-        lv = a[0] == TRK_DRUM ? &song.g[G_DRLVL] : &t->p[P_LEVEL];
+        lv = is_drum(t) ? &song.g[G_DRLVL] : &t->p[P_LEVEL];
         if (na >= 4u) {
             *lv = (int16_t)clamp(ed_rv(a + 1), 0, 127);
             t->p[P_MUTE] = (int16_t)(a[3] ? 1 : 0);
-            if (a[0] == TRK_DRUM)                          /* the editor's own change: no push */
+            if (is_drum(t))                                /* the editor's own change: no push */
                 ed_w.v[P_COUNT + G_DRLVL] = *lv;
             else
                 ed_known(a[0], P_LEVEL);
@@ -1031,7 +1033,7 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
                                                             * -> index, on (3), lvl (5), rat (5): the drum track's 16 lanes */
         dstep_t *d;
         uint32_t on, lv, rt;
-        if (na < 1u || a[0] >= NSTEP)
+        if (na < 1u || a[0] >= NSTEP || !is_drum(TDRUM))   /* (SNOOP 0.10: track 4 a synth: no drum steps) */
             return;
         d = &TDRUM->dstep[a[0]];
         if (na >= 14u) {

@@ -11,6 +11,7 @@ static const char *const N_LPOL[] = {"BI", "UNI"};
 static const char *const N_DMODE[] = {"DIGI", "TAPE"};   /* SNOOP: the delay (fx.c) */
 static const char *const N_DSYNC[] = {"SYNC", "FREE"};
 static const char *const N_RTYPE[] = {"ROOM", "PLATE", "SPACE"};   /* SNOOP 0.4: the reverb */
+static const char *const N_T4[] = {"DRUMS", "SYNTH"};   /* SNOOP 0.10: what track 4 is */
 /* GLO > MIDI (2.6): a synth track's MIDI channel, and the other channels */
 static const char *const N_SECT[] = {"A", "B", "C", "D", 0};   /* SAVE > SECTION (2.7): the slot as its section */
 static const char *const N_MCH[] = {"OFF", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"};
@@ -216,6 +217,7 @@ static const param_desc_t GP[G_COUNT] = {
     [G_RTYPE] = PE("TYPE", N_RTYPE, 0),           /* SNOOP 0.4: ROOM = SLOOP's reverb */
     [G_RSZ] = PD("SIZE", F_PCT, 0, 127, 80),      /* PLATE / SPACE: the space's size (REV/CHO's SIZE is their DECAY) */
     [G_RPRE] = {"PRE", F_INT, 0, 100, 10, 0, "ms"},   /* PLATE / SPACE: the pre-delay */
+    [G_T4] = PE("TRK 4", N_T4, 0),                /* SNOOP 0.10: DRUMS (SLOOP's) / SYNTH (ui_t4.c t4_set) */
     [G_RMOD] = PD("MOD", F_PCT, 0, 127, 50),      /* PLATE / SPACE: how much the tank's lines swing (chorus in the tail) */     /* 2.7.2: the punch-in FX fade (FX layer SELECT), 0 off .. 15 (punch.c) */
 };
 
@@ -446,6 +448,7 @@ static const page_t PAGES[] = {
     {"MASTER", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DUST, G_DUCK, G_FILT, G_ROLL}},
     {"SYSTEM", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, G_SYNC, G_ROUTE, G_INFO}},
     {"DRUMS", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DRCH, G_DRLVL, G_DRREV, G_DRDLY}},   /* GM kit on MIDI ch 10 */
+    {"TRACK 4", FAM_GLO, SC_GLOBAL, GR_NONE, {G_T4, 0xFF, 0xFF, 0xFF}},   /* SNOOP 0.10: track 4 DRUMS or SYNTH */
     {"MIDI", FAM_GLO, SC_GLOBAL, GR_NONE, {G_CH1, G_CH2, G_CH3, G_DRCH}},   /* 2.6: each track's channel, the drums' too */
     {"MIDI 2", FAM_GLO, SC_GLOBAL, GR_NONE, {G_ROUTE, G_CHOTH, G_MIDI, G_BEND}},   /* 2.6: IN, OTHER, OUT, BEND: every MIDI
                                                                            * setting in these two pages (IN and OUT on

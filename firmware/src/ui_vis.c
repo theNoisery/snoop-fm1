@@ -522,8 +522,10 @@ static void vis_update(void)
         pk[i] = trk[i].peak;
         trk[i].peak = 0;
     }
-    pk[3] = drums.peak;
-    drums.peak = 0;
+    if (is_drum(TDRUM)) {                           /* (SNOOP 0.10: track 4 a synth: its own peak, above) */
+        pk[3] = drums.peak;
+        drums.peak = 0;
+    }
     hit = vis_hit;
     vis_hit = 0;
     vis_kick_hit = 0;
@@ -830,7 +832,7 @@ static void op_loop(int32_t cx, int32_t cy, uint16_t c)
 /* a step of track i has something to play */
 static int vis_step_on(uint32_t i, uint32_t s)
 {
-    if (i == TRK_DRUM)
+    if (is_drum(&trk[i]))
         return trk[i].dstep[s].on[0] | trk[i].dstep[s].on[1];
     return trk[i].step[s].n != 0;
 }
@@ -996,7 +998,7 @@ static void vis_tracks(void)
     uint32_t i;
     for (i = 0; i < 4u; i++) {
         int32_t cx = 30 + (int32_t)i * 60, gy = 64, lv = (int32_t)trk_level(i) * 99 / 127;
-        int32_t pan = i == TRK_DRUM ? 0 : trk[i].p[P_PAN], nd = trk[i].p[P_MUTE] ? 0 : vs.sm[i];
+        int32_t pan = trk[i].p[P_PAN], nd = trk[i].p[P_MUTE] ? 0 : vs.sm[i];
         uint32_t a = 512u + (uint32_t)(nd * 512 / 1000);
         char b[4];
         b[0] = (char)('1' + i), b[1] = 0;

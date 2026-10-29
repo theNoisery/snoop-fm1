@@ -6,7 +6,7 @@
 #undef main
 #include <assert.h>
 #define PROJ_HOST 1
-static uint32_t trk_def_engine(uint32_t i) { return i < NPART ? i : 0; }
+static uint32_t trk_def_engine(uint32_t i) { return i < NSYN ? i : 0; }
 #include "../firmware/src/project.c"
 static struct { uint8_t force; } ui;
 static uint8_t sync_reload;
@@ -45,7 +45,7 @@ int main(int argc, char **argv)
         put_step(TDRUM, k, k % 4u ? 1 : 2, drum, ST_NOTE, 0);
     }
     capture(0);
-    for (i = 0; i < NPART; i++)
+    for (i = 0; i < NSYN; i++)
         for (k = 0; k < 16; k++) {
             uint32_t j;
             for (j = 0; j < trk[i].step[k].n; j++) trk[i].step[k].note[j] += 5;
@@ -66,7 +66,7 @@ int main(int argc, char **argv)
         if (song.playing && arrangement_clock.index == 1u && !at_change) at_change = frame;
         if (!song.playing && frame && !at_stop) at_stop = frame;
         uint32_t sounding = 0;
-        for (i = 0; i < NPART; i++)
+        for (i = 0; i < NSYN; i++)
             for (k = 0; k < NVOICE; k++)
                 if (trk[i].v[k].active) sounding |= 1u << i;
         for (k = 0; k < NDRUM; k++) if (drums.v[k].active) sounding |= 8;
@@ -84,7 +84,7 @@ int main(int argc, char **argv)
     assert(trk[0].step[0].note[0] == 41);
     assert(trk[2].engine == 0 && song.g[G_DRLVL] == 80);
     assert(drum_kit() == 4);
-    for (i = 0; i < NPART; i++) {
+    for (i = 0; i < NSYN; i++) {
         assert(trk[i].seq_n == 0);
         for (k = 0; k < NVOICE; k++) assert(!trk[i].v[k].gate);
     }

@@ -152,7 +152,7 @@ static void put_step(track_t *t, uint32_t i, uint32_t n, const uint8_t *notes, u
 static uint32_t busy_now(void)                   /* sounding voices of the parts (not the ones fading out: given up) */
 {
     uint32_t p, i, n = 0;
-    for (p = 0; p < NPART; p++)
+    for (p = 0; p < NSYN; p++)
         for (i = 0; i < NVOICE; i++)
             n += trk[p].v[i].active && trk[p].v[i].stage != 4u;
     return n;
@@ -210,7 +210,7 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
         put_step(td, i, k, n, k ? ST_NOTE : ST_REST, i % 4u == 0u ? SF_ACCENT : 0u);
     }
     if (solo) {                                    /* the other tracks silent */
-        for (i = 0; i < NPART; i++)
+        for (i = 0; i < NSYN; i++)
             if (i + 1u != solo)
                 trk[i].p[P_LEVEL] = 0;
         if (solo != 4u)
@@ -293,7 +293,7 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
  * held: parts[k] = {engine, preset, notes} for part k, 0 notes = idle. 2 s to settle, then the
  * fastest of four 2 s stretches (the host's other load only ever adds). Runs in a child process
  * (a clean state each time); the result comes back through a pipe. */
-static double tracks_cost(const uint8_t parts[NPART][3], uint32_t *busy_max)
+static double tracks_cost(const uint8_t parts[NSYN][3], uint32_t *busy_max)
 {
     int fd[2];
     pid_t pid;
@@ -307,13 +307,13 @@ static double tracks_cost(const uint8_t parts[NPART][3], uint32_t *busy_max)
         uint32_t p, i, bm = 0;
         int32_t o[2 * CTL];
         host_tracks_init();
-        for (p = 0; p < NPART; p++) {
+        for (p = 0; p < NSYN; p++) {
             host_preset(&trk[p], parts[p][0], parts[p][1]);
             trk[p].p[P_VOICE] = V_POLY;
             trk[p].p[P_SUS] = 127;                  /* held notes keep sounding */
             trk[p].p[P_AMODE] = 0;
         }
-        for (p = 0; p < NPART; p++)
+        for (p = 0; p < NSYN; p++)
             for (i = 0; i < parts[p][2]; i++)
                 trk_note_on(&trk[p], NOTES[i] + 12u * p, 100);
         for (k = 0; k < 2u * FS / CTL + nblk; k++) {   /* 2 s to settle (attacks), then measure */
@@ -366,7 +366,7 @@ static int steal_test(const char *dir)
     if (!L || !(w = fopen(path, "wb")))
         return 1;
     host_tracks_init();
-    for (p = 0; p < NPART; p++) {
+    for (p = 0; p < NSYN; p++) {
         track_t *t = &trk[p];
         host_preset(t, 0, 5);                      /* ANALOG SINE KEY, as a plain held sine: */
         t->p[P_E4] = 127;                          /* filter open, no resonance, no drive */
@@ -651,7 +651,7 @@ static int trs_test(void)
     uint32_t d0, i;
     int ok_parts, ok_drum, ok_sel, ok_off, ok_hang, ok_rec;
     host_tracks_init();
-    for (i = 0; i < NPART; i++) {
+    for (i = 0; i < NSYN; i++) {
         host_preset(&trk[i], 0, 1);
         trk[i].p[P_VOICE] = V_POLY;
         trk[i].p[P_SUS] = 127;
@@ -746,7 +746,7 @@ static int tracks_test(const char *dir)
     /* one part: every preset with 8 held notes (the engine's cap: VOICE 4) + drums; the worst one */
     for (e = 0; e < NENGINES; e++)
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
-            uint8_t parts[NPART][3] = {{(uint8_t)e, (uint8_t)pi, 8}, {0, 0, 0}, {0, 0, 0}};
+            uint8_t parts[NSYN][3] = {{(uint8_t)e, (uint8_t)pi, 8}, {0, 0, 0}, {0, 0, 0}};
             double c = tracks_cost(parts, 0);
             if (c > best_e[e]) {
                 best_e[e] = c;
@@ -762,10 +762,10 @@ static int tracks_test(const char *dir)
     for (e = 0; e < NENGINES; e++)
         printf(" %s %s %.1f%s", ENGINES[e]->name, ENGINES[e]->presets[heavy[e]].name, best_e[e], e + 1u < NENGINES ? "," : "\n");
     {   /* DIGITAL, PHASE, VOICE (their heaviest presets) at once: 3 + 3 + 2 notes = the budget of 8 */
-        uint8_t parts[NPART][3] = {{1, (uint8_t)heavy[1], 3}, {2, (uint8_t)heavy[2], 3}, {5, (uint8_t)heavy[5], 2}};
-        uint8_t full[NPART][3] = {{1, (uint8_t)heavy[1], 8}, {2, (uint8_t)heavy[2], 8}, {5, (uint8_t)heavy[5], 4}};
-        uint8_t vv[NPART][3] = {{5, (uint8_t)heavy[5], 4}, {5, (uint8_t)heavy[5], 4}, {0, 0, 0}};
-        uint8_t idle[NPART][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
+        uint8_t parts[NSYN][3] = {{1, (uint8_t)heavy[1], 3}, {2, (uint8_t)heavy[2], 3}, {5, (uint8_t)heavy[5], 2}};
+        uint8_t full[NSYN][3] = {{1, (uint8_t)heavy[1], 8}, {2, (uint8_t)heavy[2], 8}, {5, (uint8_t)heavy[5], 4}};
+        uint8_t vv[NSYN][3] = {{5, (uint8_t)heavy[5], 4}, {5, (uint8_t)heavy[5], 4}, {0, 0, 0}};
+        uint8_t idle[NSYN][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
         uint32_t bm2 = 0, bm3 = 0;
         double two_voice, none;
         four = tracks_cost(parts, &bm);
