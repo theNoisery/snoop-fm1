@@ -976,37 +976,29 @@ UI_SMALL static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_
                 ui_message(undo_swap(1) ? "REDO" : "NOTHING TO REDO");
         }
     }
-    if (held == LY_ROLL && trk_is_part(song.sel)) {       /* (SNOOP 0.11) ARP + OCT+ held: MUTATE, the longer the more;
-                                                           * + OCT-: back; both: none (seq.c amut). The drums: ghost / hard
-                                                           * rolls, as ever */
+    if (held == LY_ROLL && trk_is_part(song.sel)) {       /* (SNOOP 0.11) ARP + OCT+ held: MUTATE, a change at the press, one
+                                                           * more every AMUT_UP_MS held, on and on (0.11.2, as the KeyStep);
+                                                           * + OCT-: taken back, the last first; both: the arp as it was
+                                                           * (seq.c amut). By the time held, not the passes (0.11.1). The
+                                                           * drums: ghost / hard rolls, as ever */
+        static uint32_t prev, t_next;
         uint32_t ob = 1u << panel.btn[B_OCTDN], pb = 1u << panel.btn[B_OCTUP], b = fm1_in.buttons & (ob | pb);
-        static uint32_t amut_ms, rem;                   /* (0.11.1: by the time held, not by the passes: the FM-1's
-                                                         * main loop runs far more often than the screen's frames) */
-        uint32_t p = song.sel, a = amut[p].amt, was = a, dt = fm1_ms - amut_ms;
-        amut_ms = fm1_ms;
-        if (dt > 100u)
-            dt = 0, rem = 0;                            /* (the first pass of a hold) */
+        uint32_t p = song.sel, was = amut_amount(p), press = b & ~prev;
+        prev = b;
         if (b) {
             used[held] = 1;
-            rem += dt * 1000u;
             if (b == (ob | pb)) {
-                a = 0, rem = 0;
-            } else if (b & pb) {
-                uint32_t up = rem / AMUT_UP_MS;
-                rem -= up * AMUT_UP_MS;
-                if (!a && up)
-                    amut_seed(p, fm1_ms);           /* (a new mutation each time it leaves 0) */
-                a = a + up < 1000u ? a + up : 1000u;
-            } else {
-                uint32_t dn = rem / AMUT_DOWN_MS;
-                rem -= dn * AMUT_DOWN_MS;
-                a = a > dn ? a - dn : 0u;
+                if (press)
+                    amut_clear(p);
+            } else if (press || (int32_t)(fm1_ms - t_next) >= 0) {
+                if (b & pb)
+                    amut_more(p, fm1_ms);
+                else
+                    amut_less(p);
+                t_next = fm1_ms + ((b & pb) ? AMUT_UP_MS : AMUT_DOWN_MS);
             }
-            amut[p].amt = (uint16_t)a;
-            if (a / 10u != was / 10u)
+            if (amut_amount(p) != was || press)
                 ui.force = 1;
-        } else {
-            rem = 0;
         }
     }
     if (held == LY_STEP) {                                /* SEQ + OCT- / OCT+: the page; a step held: OCT- its nudge, locks and

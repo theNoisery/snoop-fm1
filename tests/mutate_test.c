@@ -3,10 +3,10 @@
  * the more; ARP + OCT- takes it back; both: none; KNOB 2 on the ARP layer too. On the ui_pages_test harness (the real
  * UI, the audio between the frames). Checks:
  *   - MUTATE at 0: the arp as ever (the same notes as before it was touched);
- *   - OCT+ held: the amount grows with the time held, the ARP layer shows it (its bar), the arp's notes differ from
- *     the plain arp's, more of them the further it goes (rests, other notes, octaves, repeats, ties);
+ *   - OCT+ held: a change at the press and one every 110 ms held, on the pattern as it is (0.11.2: as the KeyStep's, no
+ *     end to it); held again: on from there; the ARP layer shows how much changed (its bar); rests, other notes, octaves;
  *   - a new chord: the changes stay (the amount does not move);
- *   - OCT- back to 0: the plain arp again, note for note; OCT+ and OCT- together: 0 at once;
+ *   - OCT- / KNOB 2 left: the changes taken back, the last first, to the plain arp note for note; both: at once;
  *   - the drum track: ARP + OCT+ is its hard roll as ever, nothing mutated.
  * Screens: DIR/mutate-*.ppm */
 #define UI_PAGES_HARNESS_ONLY 1
@@ -31,6 +31,17 @@ static uint32_t differ(const uint8_t *a, const uint8_t *b)
     for (i = 0; i < NREC; i++) d += a[i] != b[i];
     return d;
 }
+/* how many of the steps differ from the plain arp (it repeats every 6: at its best phase) */
+static uint32_t vs_plain(const uint8_t *m, const uint8_t *plain)
+{
+    uint32_t best = NREC, sh, i;
+    for (sh = 0; sh < 6u; sh++) {
+        uint32_t d = 0;
+        for (i = 0; i < NREC; i++) d += m[i] != plain[(i + sh) % 6u];
+        if (d < best) best = d;
+    }
+    return best;
+}
 static void hold_keys(uint32_t mask) { fm1_in.notes = mask; frames(2); }
 /* (0.11.1) the FM-1's main loop: the input read every ~1 ms, the screen drawn far less often; ms passes */
 static void fast(uint32_t ms)
@@ -48,7 +59,8 @@ static void fast(uint32_t ms)
 int main(int argc, char **argv)
 {
     static uint8_t plain[NREC], plain2[NREC], m1[NREC], m2[NREC], back[NREC];
-    uint32_t i, chord, chord2, d1, d2, a1, a2;
+    uint32_t i, chord, chord2, d1, d2, a1, a2, h1, h2;
+    static amu_step_t st1[AMUT_N], st3[AMUT_N];
     track_t *t = &trk[0];
     outdir = argc > 1 ? argv[1] : "build/host";
     panel = PANEL_DEFAULT;
@@ -71,100 +83,102 @@ int main(int argc, char **argv)
     printf("  plain arp: %u %u %u %u %u %u %u %u ...\n", plain[0], plain[1], plain[2], plain[3], plain[4], plain[5], plain[6], plain[7]);
     check(differ(plain, plain2) == 0 || differ(plain, plain2) == NREC, "MUTATE 0: the plain arp (recorded)");
 
-    /* ARP + OCT+ held, a little */
+    /* ARP + OCT+ held 0.8 s (the input read every ms, as on the FM-1) */
     fm1_in.buttons |= 1u << panel.btn[B_ARP]; frame();
     fm1_in.buttons |= 1u << panel.btn[B_OCTUP];
-    fast(800);                                          /* 0.8 s, the input read every ms as on the FM-1 (0.11 went
-                                                         * by the passes: 100 % at once there) */
+    fast(800);
     fm1_in.buttons &= ~(1u << panel.btn[B_OCTUP]); frames(2);
-    a1 = amut[0].amt;
+    a1 = amut_amount(0);
+    h1 = amut[0].nh;
+    memcpy(st1, amut[0].st, sizeof st1);
     ui.force = 1; frame(); ppm("mutate-layer-a");
-    printf("  OCT+ held 0.8 s (input every ms): MUTATE %u %%\n", a1 / 10u);
-    check(a1 > 250u && a1 < 350u, "ARP + OCT+ held 0.8 s: MUTATE about 30 % (by the time held, however often the input is read)");
+    printf("  OCT+ held 0.8 s: %u changes, the pattern %u %% changed\n", h1, a1 / 10u);
+    check(h1 >= 7u && h1 <= 9u, "ARP + OCT+ held 0.8 s: a change at the press, one every 110 ms after (by the time held)");
+    check(a1 > 150u && a1 < 600u, "... part of the pattern changed (the bar)");
     check(ui.layer == LY_ROLL, "the ARP layer shows (its MUTATE bar)");
     fm1_in.buttons &= ~(1u << panel.btn[B_ARP]); frames(4);
     arp_record(t, m1);
-    /* (the plain arp at the same steps: it repeats every 6 notes, the record started at a multiple of 6? compare by the
-     * cycle: the plain one shifted to the same phase) */
-    {
-        uint32_t best = NREC, sh;
-        for (sh = 0; sh < 6u; sh++) {
-            uint32_t d = 0;
-            for (i = 0; i < NREC; i++) d += m1[i] != plain[(i + sh) % 6u];
-            if (d < best) best = d;
-        }
-        d1 = best;
-    }
-    printf("  MUTATE %u %%: %u of %u steps changed\n", a1 / 10u, d1, NREC);
-    check(d1 > 4u && d1 < 40u, "MUTATE a third: some steps changed, most as they were");
+    d1 = vs_plain(m1, plain);
+    printf("  %u of %u arp steps differ from the plain arp\n", d1, NREC);
+    check(d1 > 4u && d1 < 48u, "MUTATE a little: some steps changed, many as they were");
 
-    /* further */
+    /* let go, hold again: it goes on from there */
     fm1_in.buttons |= 1u << panel.btn[B_ARP]; frame();
     fm1_in.buttons |= 1u << panel.btn[B_OCTUP];
-    frames(150);
+    fast(250);
     fm1_in.buttons &= ~(1u << panel.btn[B_OCTUP]); frames(2);
-    a2 = amut[0].amt;
+    h2 = amut[0].nh;
+    {
+        uint32_t k, moved = 0;
+        for (k = 0; k < AMUT_N; k++) moved += memcmp(&st1[k], &amut[0].st[k], sizeof st1[k]) != 0;
+        printf("  held again 0.25 s: %u more changes, %u of 16 steps moved\n", h2 - h1, moved);
+        check(h2 - h1 >= 2u && h2 - h1 <= 4u && moved >= 1u && moved <= h2 - h1,
+              "held again: it goes on from where it was (the changes so far kept, a few more on them)");
+    }
+    /* KNOB 2 left, a detent a change: back exactly to where the first hold left it */
+    for (i = h1; i < h2; i++) { encs[panel.enc[EN_K2]] = -1; frames(1); }
+    check(!memcmp(st1, amut[0].st, sizeof st1) && amut[0].nh == h1, "KNOB 2 left: the last changes taken back, the pattern as it was");
+
+    /* held on and on: no end to it */
+    fm1_in.buttons |= 1u << panel.btn[B_OCTUP];
+    fast(3000);
+    memcpy(st3, amut[0].st, sizeof st3);
+    fast(3000);
+    fm1_in.buttons &= ~(1u << panel.btn[B_OCTUP]); frames(2);
+    a2 = amut_amount(0);
     ui.force = 1; frame(); ppm("mutate-layer-full");
     fm1_in.buttons &= ~(1u << panel.btn[B_ARP]); frames(4);
-    check(a2 == 1000u, "held on: MUTATE all the way (100 %)");
+    printf("  held 6 s more: the pattern %u %% changed\n", a2 / 10u);
+    check(memcmp(st3, amut[0].st, sizeof st3) != 0, "held on: it keeps changing (no ceiling, as the KeyStep's)");
+    check(a2 >= 750u, "... most of the pattern changed");
     arp_record(t, m2);
     {
-        uint32_t best = NREC, sh, rests = 0, outside = 0;
-        for (sh = 0; sh < 6u; sh++) {
-            uint32_t d = 0;
-            for (i = 0; i < NREC; i++) d += m2[i] != plain[(i + sh) % 6u];
-            if (d < best) best = d;
-        }
-        d2 = best;
+        uint32_t rests = 0, outside = 0;
+        d2 = vs_plain(m2, plain);
         for (i = 0; i < NREC; i++) {
             uint32_t j, in = 0;
             rests += !m2[i];
             for (j = 0; j < 6u; j++) in |= m2[i] == plain[j];
             outside += m2[i] && !in;
         }
-        printf("  MUTATE 100 %%: %u of %u steps changed (%u rests, %u notes outside the plain arp's)\n", d2, NREC, rests, outside);
-        check(d2 > d1 + 8u, "MUTATE further: more steps changed");
+        printf("  %u of %u steps differ (%u rests, %u notes outside the plain arp's)\n", d2, NREC, rests, outside);
+        check(d2 > d1, "further: more steps changed");
         check(rests > 0u && outside > 0u, "the changes: rests and octaves the plain arp never plays");
     }
 
     /* a new chord: the changes stay */
+    memcpy(st3, amut[0].st, sizeof st3);
     hold_keys(chord2);
     frames(20);
-    check(amut[0].amt == 1000u, "a new chord: MUTATE stays");
+    check(!memcmp(st3, amut[0].st, sizeof st3), "a new chord: the changes stay");
     hold_keys(chord);
     frames(10);
 
-    /* back with OCT- to 0: the plain arp again */
+    /* back with OCT- (held): the plain arp again, note for note */
     fm1_in.buttons |= 1u << panel.btn[B_ARP]; frame();
     fm1_in.buttons |= 1u << panel.btn[B_OCTDN];
-    fast(800);
-    printf("  OCT- held 0.8 s: MUTATE %u %% (from 100)\n", amut[0].amt / 10u);
-    check(amut[0].amt > 400u && amut[0].amt < 600u, "ARP + OCT- held 0.8 s: half way back");
-    fast(1000);
+    fast(700);
+    printf("  OCT- held 0.7 s: %u changes left in the history, the pattern %u %% changed\n", amut[0].nh, amut_amount(0) / 10u);
+    check(amut[0].nh > 0u, "OCT- held: back a change at a time (the last first)");
+    fast(6000);
     fm1_in.buttons &= ~(1u << panel.btn[B_OCTDN]); frames(2);
     fm1_in.buttons &= ~(1u << panel.btn[B_ARP]); frames(4);
-    check(amut[0].amt == 0u, "ARP + OCT- held: back to 0");
+    check(amut_amount(0) == 0u && amut[0].nh == 0u, "ARP + OCT- held: all the way back");
     arp_record(t, back);
-    {
-        uint32_t best = NREC, sh;
-        for (sh = 0; sh < 6u; sh++) {
-            uint32_t d = 0;
-            for (i = 0; i < NREC; i++) d += back[i] != plain[(i + sh) % 6u];
-            if (d < best) best = d;
-        }
-        check(best == 0u, "back at 0: the plain arp, note for note");
-    }
+    check(vs_plain(back, plain) == 0u, "back: the plain arp, note for note");
 
-    /* both at once: none */
+    /* both at once: as it was */
     fm1_in.buttons |= 1u << panel.btn[B_ARP]; frame();
-    fm1_in.buttons |= 1u << panel.btn[B_OCTUP]; frames(60);
+    fm1_in.buttons |= 1u << panel.btn[B_OCTUP]; fast(1000);
+    check(amut_amount(0) > 0u, "(mutated again)");
     fm1_in.buttons |= 1u << panel.btn[B_OCTDN]; frames(2);
-    check(amut[0].amt == 0u, "ARP + OCT+ and OCT- together: MUTATE 0 at once");
+    check(amut_amount(0) == 0u && amut[0].nh == 0u, "ARP + OCT+ and OCT- together: the arp as it was, at once");
     fm1_in.buttons &= ~(1u << panel.btn[B_OCTUP] | 1u << panel.btn[B_OCTDN]); frames(2);
-    /* KNOB 2 on the ARP layer */
+    /* KNOB 2 on the ARP layer: a change a detent */
     encs[panel.enc[EN_K2]] = 10; frames(2);
-    check(amut[0].amt == 200u, "KNOB 2 on the ARP layer: MUTATE too");
+    check(amut[0].nh == 10u && amut_amount(0) > 0u, "KNOB 2 on the ARP layer: a change a detent");
     encs[panel.enc[EN_K2]] = -10; frames(2);
+    check(amut_amount(0) == 0u, "KNOB 2 back: the arp as it was");
     fm1_in.buttons &= ~(1u << panel.btn[B_ARP]); frames(4);
     hold_keys(0); frames(10);
 
@@ -172,7 +186,7 @@ int main(int argc, char **argv)
     song.sel = TRK_DRUM; go_home(); frames(4);
     fm1_in.buttons |= 1u << panel.btn[B_ARP]; frame();
     fm1_in.buttons |= 1u << panel.btn[B_OCTUP]; frames(60);
-    check(amut[TRK_DRUM].amt == 0u && key_lvl() == LV_HARD, "the drum track: ARP + OCT+ the hard roll, nothing mutated");
+    check(amut_amount(TRK_DRUM) == 0u && key_lvl() == LV_HARD, "the drum track: ARP + OCT+ the hard roll, nothing mutated");
     ui.force = 1; frame(); ppm("mutate-layer-drums");
     fm1_in.buttons &= ~(1u << panel.btn[B_OCTUP] | 1u << panel.btn[B_ARP]); frames(4);
     transport_req = 2; frames(4);

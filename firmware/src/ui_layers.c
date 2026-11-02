@@ -520,12 +520,14 @@ UI_SMALL static void layer_knobs(uint32_t layer)
         case LY_ROLL:
             if (k == 0u) {
                 song.g[G_ROLL] = (int16_t)clamp(song.g[G_ROLL] + s, 0, 4);
-            } else if (k == 1u && trk_is_part(song.sel)) {   /* (SNOOP 0.11) KNOB 2: MUTATE, as OCT+ / OCT- */
-                uint32_t p = song.sel;
-                int32_t a = amut[p].amt;
-                if (!a && s > 0)
-                    amut_seed(p, fm1_ms);
-                amut[p].amt = (uint16_t)clamp(a + s * 20, 0, 1000);
+            } else if (k == 1u && trk_is_part(song.sel)) {   /* (SNOOP 0.11) KNOB 2: MUTATE, a change / an undo a detent */
+                int32_t q;
+                for (q = 0; q < (s < 0 ? -s : s); q++)
+                    if (s > 0)
+                        amut_more(song.sel, fm1_ms + (uint32_t)q);
+                    else
+                        amut_less(song.sel);
+                ui.force = 1;
             }
             break;
         case LY_STEP:
@@ -813,12 +815,12 @@ UI_SMALL static void layer_screen_draw(void)
             str_cpy(v[0], N_ROLL[clamp(song.g[G_ROLL], 0, 4)], 8);
             ratio[0] = song.g[G_ROLL] * 250;
             if (trk_is_part(sel)) {                     /* (SNOOP 0.11) MUTATE: how far, the bar */
-                uint32_t a = amut[sel].amt;
+                uint32_t a = amut_amount(sel);
                 lab[1] = "mutate";
                 fmt_int(v[1], (int32_t)(a / 10u));
                 str_cpy(v[1] + str_len(v[1]), "%", 2);
                 ratio[1] = (int32_t)a;
-                str_cpy(sub, a ? "mutate: oct+ oct-" : "oct+ held: mutate", sizeof sub);
+                str_cpy(sub, a ? "mutate: oct+ oct-" : "oct+ held: mutate", sizeof sub);   /* (both: as it was) */
             }
         }
         break;

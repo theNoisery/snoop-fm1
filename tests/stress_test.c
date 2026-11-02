@@ -222,7 +222,7 @@ static void t_fuzz(uint32_t nframes)
             vis_style = (uint8_t)rn(VIS_N);
             if (rn(8) == 0 && !ui.menu) { go_home(); vis_open(); }   /* (back to TRACKS, the visualiser open) */
             if (rn(6) == 0) t4_set(rn(2));
-            if (rn(3) == 0) { uint32_t mp = rn(NPART); if (!amut[mp].amt) amut_seed(mp, rn(1000)); amut[mp].amt = (uint16_t)rn(1001); }   /* (SNOOP 0.11) MUTATE */             /* (SNOOP 0.10) track 4 to DRUMS / SYNTH, playing or not */
+            if (rn(3) == 0) { uint32_t mp = rn(NPART), q = rn(40); while (q--) { if (rn(3)) amut_more(mp, rn(1000)); else amut_less(mp); } if (rn(8) == 0) amut_clear(mp); }   /* (SNOOP 0.11) MUTATE */             /* (SNOOP 0.10) track 4 to DRUMS / SYNTH, playing or not */
         } else if (r < 65) {
             trk[rn(NTRK)].p[P_MUTE] = (int16_t)(rn(4) == 0);
         }
