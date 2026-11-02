@@ -1716,7 +1716,9 @@ static void amut_more(uint32_t p, uint32_t salt)
     k = amut_rand() % AMUT_N;
     now = amut[p].st[k];
     if (amut[p].nh == AMUT_HIST) {                      /* (the history full: the oldest goes, it stays in force) */
-        memmove(&amut[p].hist[0], &amut[p].hist[1], sizeof amut[p].hist[0] * (AMUT_HIST - 1u));
+        uint32_t q;
+        for (q = 0; q + 1u < AMUT_HIST; q++)            /* (one place down; no memmove in libc.c) */
+            amut[p].hist[q] = amut[p].hist[q + 1u];
         amut[p].nh--;
     }
     amut[p].hist[amut[p].nh].k = (uint8_t)k;
