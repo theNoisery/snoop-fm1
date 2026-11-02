@@ -1661,6 +1661,65 @@ static uint32_t arp_pick(track_t *t, uint32_t *list, uint32_t len)
     }
 }
 
+/* (SNOOP 0.11) MUTATE, after Arturia's KeyStep: ARP held + OCT+ held changes the arpeggio, the longer the more; ARP +
+ * OCT- takes it back, both at once start over (ui_input.c; KNOB 2 on the ARP layer sets it too). Each part has a cycle of
+ * AMUT_N arp steps, each step a change drawn when MUTATE leaves 0 (a new one each time): another of the held notes, an
+ * octave up or down, a rest, the note before again, or the note before held on (a tie); and a threshold. A step changes
+ * once the amount is past its threshold, and once past a second, higher one an octave more: as the amount grows, more
+ * steps change and further, and going back undoes them in the reverse order. The held chord can change: the changes
+ * stay (they are places in the cycle, not notes). The arp's notes as they come out are what is recorded */
+#define AMUT_N 16u
+#define AMUT_UP 6u                               /* the amount a frame OCT+ is held (~2.7 s from 0 to all) */
+#define AMUT_DOWN 10u                            /* .. OCT- (back in ~1.6 s) */
+enum { AMU_NOTE, AMU_OCT, AMU_REST, AMU_REP, AMU_TIE };
+static struct {
+    volatile uint16_t amt;                              /* 0..1000 (the UI writes it) */
+    uint8_t thr[AMUT_N], thr2[AMUT_N];                  /* the amount / 4 from which step k changes; changes more (255 never) */
+    uint8_t act[AMUT_N], d[AMUT_N];                     /* AMU_*; NOTE: how many notes along */
+    int8_t oct[AMUT_N];                                 /* +1 / -1 */
+    uint8_t last;                                       /* the arp's last note (REP, TIE) */
+} amut[NPART];
+static uint32_t amut_rng = 0x9E3779B9u;
+static uint32_t amut_rand(void)
+{
+    amut_rng ^= amut_rng << 13;
+    amut_rng ^= amut_rng >> 17;
+    amut_rng ^= amut_rng << 5;
+    return amut_rng;
+}
+/* a new set of changes for part p (the UI, while its amount is 0: the audio ISR reads none of it then) */
+static void amut_seed(uint32_t p, uint32_t salt)
+{
+    uint32_t k;
+    if (p >= NPART)
+        return;
+    amut_rng ^= salt * 2654435761u;
+    if (!amut_rng)
+        amut_rng = 0x9E3779B9u;
+    for (k = 0; k < AMUT_N; k++) {
+        uint32_t r = amut_rand() % 100u, t1 = 4u + amut_rand() % 236u, t2 = t1 + 30u + amut_rand() % 150u;
+        amut[p].act[k] = (uint8_t)(r < 34u ? AMU_NOTE : r < 58u ? AMU_OCT : r < 78u ? AMU_REST : r < 91u ? AMU_REP : AMU_TIE);
+        amut[p].thr[k] = (uint8_t)t1;
+        amut[p].thr2[k] = (uint8_t)(t2 < 250u ? t2 : 255u);
+        amut[p].d[k] = (uint8_t)(1u + amut_rand() % 7u);
+        amut[p].oct[k] = (int8_t)((amut_rand() >> 9) & 1u ? 1 : -1);
+    }
+}
+/* the change at arp step idx of part p: AMU_* + 1 (0: none); *more: past its second threshold */
+static uint32_t amut_at(const track_t *t, uint32_t idx, uint32_t *more)
+{
+    uint32_t p = trk_index(t), k = idx % AMUT_N, a;
+    *more = 0;
+    if (p >= NPART || !amut[p].amt)
+        return 0;
+    a = amut[p].amt / 4u;
+    if (a < amut[p].thr[k])
+        return 0;
+    *more = a >= amut[p].thr2[k];
+    return amut[p].act[k] + 1u;
+}
+static uint32_t amut_oct(uint32_t n, int32_t o) { return (uint32_t)clamp((int32_t)n + 12 * o, 0, 127); }
+
 /* the sounding arp note(s) end (CHORD: all of them) */
 static void arp_end(track_t *t)
 {
@@ -1695,12 +1754,34 @@ static int arp_step(track_t *t)
     if (!len)
         return 0;
     t->arp_idx++;
-    if (t->p[P_AMODE] != AM_CHORD) {
-        t->arp_note = (uint8_t)list[arp_pick(t, list, len)];
-        arp_play(t, t->arp_note);
-        return 1;
+    {   /* (SNOOP 0.11) MUTATE */
+        uint32_t more, mu = amut_at(t, t->arp_idx - 1u, &more), p = trk_index(t) % NPART;
+        int32_t mo = mu ? amut[p].oct[(t->arp_idx - 1u) % AMUT_N] : 0;
+        if (mu == AMU_REST + 1u)
+            return 0;                               /* (a rest: the cycle goes on) */
+        if (t->p[P_AMODE] != AM_CHORD) {
+            uint32_t pk = arp_pick(t, list, len), n;
+            if (mu == AMU_NOTE + 1u && len > 1u)
+                pk = (pk + amut[p].d[(t->arp_idx - 1u) % AMUT_N]) % len;
+            n = list[pk];
+            if ((mu == AMU_REP + 1u || mu == AMU_TIE + 1u) && amut[p].last)
+                n = amut[p].last;                   /* (a tie with the note ended already: played again) */
+            if (mu == AMU_OCT + 1u)
+                n = amut_oct(n, mo);
+            if (more)
+                n = amut_oct(n, mu == AMU_OCT + 1u ? mo : -mo);   /* (further: OCT two octaves, the rest one) */
+            t->arp_note = (uint8_t)n;
+            amut[p].last = (uint8_t)n;
+            arp_play(t, t->arp_note);
+            return 1;
+        }
+        if (mu == AMU_OCT + 1u || more)
+            mo = more && mu == AMU_OCT + 1u ? 2 * mo : mo;   /* (CHORD: the whole chord an octave or two) */
+        else
+            mo = 0;
+        o = t->arp_idx % (uint32_t)(t->p[P_AOCT] > 0 ? t->p[P_AOCT] : 1);
+        o = (uint32_t)((int32_t)o + mo);            /* (below 0: read as signed, clamped per note below) */
     }
-    o = t->arp_idx % (uint32_t)(t->p[P_AOCT] > 0 ? t->p[P_AOCT] : 1);
     for (i = 0; i < cnt && i < 4u; i++) {          /* the held notes (sorted or as played), o octaves up */
         uint32_t nt = (uint32_t)clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
         if (nt == 127u && top++)
@@ -1765,6 +1846,14 @@ static void arp_tick(track_t *t, uint32_t adv)
     }
     if (!fire)
         return;
+    {   /* (SNOOP 0.11) MUTATE: a tie holds the note sounding on through this step */
+        uint32_t more;
+        if (t->arp_note && t->p[P_AMODE] != AM_CHORD && amut_at(t, t->arp_idx, &more) == AMU_TIE + 1u) {
+            t->arp_idx++;
+            t->arp_off += slen;
+            return;
+        }
+    }
     arp_end(t);
     if ((uint32_t)(rng() & 127u) <= (uint32_t)t->p[P_APROB] && arp_step(t))
         t->arp_off = slen * (uint32_t)t->p[P_AGATE] / 128u;

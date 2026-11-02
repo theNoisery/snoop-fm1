@@ -84,6 +84,8 @@ $CC -O1 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/t4_test" tests/t4_
 run "SNOOP 0.10 TRACK 4: DRUMS / SYNTH (the switch, its sound, steps, voices, LEVEL, MIDI channel, back again)" "$OUT/t4_test" "$OUT"
 $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/t4_proj_test" tests/t4_proj_test.c -lm
 run "SNOOP 0.10 TRACK 4 in a project (saved / loaded as SYNTH, SLOOP projects the drums, sections in the other mode)" "$OUT/t4_proj_test"
+$CC -O1 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/mutate_test" tests/mutate_test.c -lm
+run "SNOOP 0.11 MUTATE: ARP + OCT+ held (the longer the more), OCT- back, both none, KNOB 2, the bar; drums untouched" "$OUT/mutate_test" "$OUT"
 # no divide by 0 (the FM-1 runs with the div0 trap off, hal/fm1_irq.h: a real one would give a wrong value
 # silently): the UI fuzz, the sequencer, the projects and a minute of random live use, with UBSan
 UBSAN="${CC_UB:-cc} -O1 -w -fsanitize=integer-divide-by-zero -fno-sanitize-recover=integer-divide-by-zero -Ibuild/gen -Ifirmware/src -Ifirmware/hal"

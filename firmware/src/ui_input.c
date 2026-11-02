@@ -976,6 +976,27 @@ UI_SMALL static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_
                 ui_message(undo_swap(1) ? "REDO" : "NOTHING TO REDO");
         }
     }
+    if (held == LY_ROLL && trk_is_part(song.sel)) {       /* (SNOOP 0.11) ARP + OCT+ held: MUTATE, the longer the more;
+                                                           * + OCT-: back; both: none (seq.c amut). The drums: ghost / hard
+                                                           * rolls, as ever */
+        uint32_t ob = 1u << panel.btn[B_OCTDN], pb = 1u << panel.btn[B_OCTUP], b = fm1_in.buttons & (ob | pb);
+        uint32_t p = song.sel, a = amut[p].amt, was = a;
+        if (b) {
+            used[held] = 1;
+            if (b == (ob | pb))
+                a = 0;
+            else if (b & pb) {
+                if (!a)
+                    amut_seed(p, fm1_ms);           /* (a new mutation each time it leaves 0) */
+                a = a + AMUT_UP < 1000u ? a + AMUT_UP : 1000u;
+            } else {
+                a = a > AMUT_DOWN ? a - AMUT_DOWN : 0u;
+            }
+            amut[p].amt = (uint16_t)a;
+            if (a / 10u != was / 10u)
+                ui.force = 1;
+        }
+    }
     if (held == LY_STEP) {                                /* SEQ + OCT- / OCT+: the page; a step held: OCT- its nudge, locks and
                                                            * condition go, OCT+ its fill condition (normal, fill only, no fill) */
         uint32_t ob = 1u << panel.btn[B_OCTDN], pb = 1u << panel.btn[B_OCTUP];
