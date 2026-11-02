@@ -32,6 +32,18 @@ static uint32_t differ(const uint8_t *a, const uint8_t *b)
     return d;
 }
 static void hold_keys(uint32_t mask) { fm1_in.notes = mask; frames(2); }
+/* (0.11.1) the FM-1's main loop: the input read every ~1 ms, the screen drawn far less often; ms passes */
+static void fast(uint32_t ms)
+{
+    static int32_t o[CTL * 2];
+    uint32_t i;
+    for (i = 0; i < ms; i++) {
+        if (i % 16u == 0u) { mix_block(o, CTL); }
+        ui_input();
+        fm1_ms += 1;
+    }
+    ui_leds(); ui_draw();
+}
 
 int main(int argc, char **argv)
 {
@@ -62,11 +74,13 @@ int main(int argc, char **argv)
     /* ARP + OCT+ held, a little */
     fm1_in.buttons |= 1u << panel.btn[B_ARP]; frame();
     fm1_in.buttons |= 1u << panel.btn[B_OCTUP];
-    frames(50);                                         /* ~0.8 s */
+    fast(800);                                          /* 0.8 s, the input read every ms as on the FM-1 (0.11 went
+                                                         * by the passes: 100 % at once there) */
     fm1_in.buttons &= ~(1u << panel.btn[B_OCTUP]); frames(2);
     a1 = amut[0].amt;
     ui.force = 1; frame(); ppm("mutate-layer-a");
-    check(a1 > 200u && a1 < 450u, "ARP + OCT+ held 0.8 s: MUTATE about a third");
+    printf("  OCT+ held 0.8 s (input every ms): MUTATE %u %%\n", a1 / 10u);
+    check(a1 > 250u && a1 < 350u, "ARP + OCT+ held 0.8 s: MUTATE about 30 % (by the time held, however often the input is read)");
     check(ui.layer == LY_ROLL, "the ARP layer shows (its MUTATE bar)");
     fm1_in.buttons &= ~(1u << panel.btn[B_ARP]); frames(4);
     arp_record(t, m1);
@@ -123,7 +137,10 @@ int main(int argc, char **argv)
     /* back with OCT- to 0: the plain arp again */
     fm1_in.buttons |= 1u << panel.btn[B_ARP]; frame();
     fm1_in.buttons |= 1u << panel.btn[B_OCTDN];
-    frames(130);
+    fast(800);
+    printf("  OCT- held 0.8 s: MUTATE %u %% (from 100)\n", amut[0].amt / 10u);
+    check(amut[0].amt > 400u && amut[0].amt < 600u, "ARP + OCT- held 0.8 s: half way back");
+    fast(1000);
     fm1_in.buttons &= ~(1u << panel.btn[B_OCTDN]); frames(2);
     fm1_in.buttons &= ~(1u << panel.btn[B_ARP]); frames(4);
     check(amut[0].amt == 0u, "ARP + OCT- held: back to 0");

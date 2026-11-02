@@ -1669,8 +1669,8 @@ static uint32_t arp_pick(track_t *t, uint32_t *list, uint32_t len)
  * steps change and further, and going back undoes them in the reverse order. The held chord can change: the changes
  * stay (they are places in the cycle, not notes). The arp's notes as they come out are what is recorded */
 #define AMUT_N 16u
-#define AMUT_UP 6u                               /* the amount a frame OCT+ is held (~2.7 s from 0 to all) */
-#define AMUT_DOWN 10u                            /* .. OCT- (back in ~1.6 s) */
+#define AMUT_UP_MS 2700u                         /* OCT+ held: from 0 to all in this many ms */
+#define AMUT_DOWN_MS 1600u                       /* OCT- held: back from all to 0 */
 enum { AMU_NOTE, AMU_OCT, AMU_REST, AMU_REP, AMU_TIE };
 static struct {
     volatile uint16_t amt;                              /* 0..1000 (the UI writes it) */
