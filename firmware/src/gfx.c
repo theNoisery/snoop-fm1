@@ -254,8 +254,8 @@ static void cv_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c)
  * s and y diaeresis, which have none); anything missing (and C1 controls) draws as '?' */
 static uint32_t glyph(const felucca_font_t *f, uint32_t ch)
 {
-    if ((ch >= 'a' && ch <= 'z') || (ch >= 0xE0u && ch <= 0xFEu && ch != 0xF7u))
-        ch -= 32u;
+    if (f->last != 126u && ((ch >= 'a' && ch <= 'z') || (ch >= 0xE0u && ch <= 0xFEu && ch != 0xF7u)))
+        ch -= 32u;                                      /* (SNOOP 0.12: FONT_N, 32..126, has its lower case) */
     if (ch < f->first || ch > f->last || (ch >= 127u && ch < 160u))
         ch = '?';
     return ch - f->first;
