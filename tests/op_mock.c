@@ -10,11 +10,14 @@ static uint16_t PC[4] = {OP_BLUE, RGB(255, 138, 40), OP_WHITE, OP_RED};   /* (or
 #define KCOL PC
 #define REC_RED RGB(246, 52, 84)
 
-static const felucca_font_t *BIG = &FONT_N2, *VAL = &FONT_N;   /* the pixel fonts of titles / values (a variant each) */
-static void ntext(int32_t x, int32_t y, const char *s, uint16_t c) { cv_text(x, y, &FONT_N, s, c); }
+#ifdef OP_FONTS
+#include "cand_fonts.h"
+#endif
+static const felucca_font_t *BIG = &FONT_L, *VAL = &FONT_S, *SM = &FONT_N;   /* the pixel fonts of titles / values (a variant each) */
+static void ntext(int32_t x, int32_t y, const char *s, uint16_t c) { cv_text(x, y, SM, s, c); }
 static int32_t big(int32_t x, int32_t y, const char *s, uint16_t c) { return cv_text(x, y, BIG, s, c) - x; }
 static int32_t val(int32_t x, int32_t y, const char *s, uint16_t c) { return cv_text(x, y, VAL, s, c) - x; }
-static int32_t ntext_w(const char *s) { return text_w(&FONT_N, s); }
+static int32_t ntext_w(const char *s) { return text_w(SM, s); }
 static void ntext_r(int32_t rx, int32_t y, const char *s, uint16_t c) { ntext(rx - ntext_w(s), y, s, c); }
 static void ntext_c(int32_t cx, int32_t y, const char *s, uint16_t c) { ntext(cx - ntext_w(s) / 2, y, s, c); }
 
@@ -63,10 +66,10 @@ static void op_badge(int32_t x, int32_t y, uint32_t i, int sel)
     uint16_t c = PC[i];
     if (sel) {
         op_rrect(x, y, 20, 20, 3, 0, c, 1);
-        cv_text(x + 6, y + 2, &FONT_S, b, OP_BG);
+        cv_text(x + 10 - text_w(VAL, b) / 2, y + 10 - (int32_t)VAL->h / 2, VAL, b, OP_BG);
     } else {
         op_rrect(x, y, 20, 20, 3, OPW(1.2), c, 0);
-        cv_text(x + 6, y + 2, &FONT_S, b, c);
+        cv_text(x + 10 - text_w(VAL, b) / 2, y + 10 - (int32_t)VAL->h / 2, VAL, b, c);
     }
 }
 /* the top bar of a page: its title (thin, large), the track and the tempo */
@@ -369,21 +372,27 @@ int main(int argc, char **argv)
     song.sel = 1;
     go_home(); frames(4);
     transport_req = 1; frames(37);
-    {   /* the two pixel variants: regular (N at 2x, values N) and bold (SLOOP's L, values S) */
-        static const char *const VN[2] = {"reg", "bold"};
+#ifdef OP_FONTS
+    {   /* the candidate fonts: small (labels, lists), values, large (titles, the tempo) */
+        static const struct { const char *n; const felucca_font_t *s, *v, *b; } CF[] = {
+            {"terminus", &FONT_N, &FONT_S, &FONT_L}, {"unifont", &FONT_UNIS, &FONT_UNIV, &FONT_UNIB},
+            {"silkscreen", &FONT_SILKS, &FONT_SILKV, &FONT_SILKB}, {"pixelify", &FONT_PXFS, &FONT_PXFV, &FONT_PXFB},
+            {"jura", &FONT_JURAS, &FONT_JURAV, &FONT_JURAB}, {"tektur", &FONT_TEKS, &FONT_TEKV, &FONT_TEKB},
+            {"geist", &FONT_GEISTS, &FONT_GEISTV, &FONT_GEISTB}, {"jetbrains", &FONT_JBMS, &FONT_JBMV, &FONT_JBMB},
+            {"plex", &FONT_PLEXS, &FONT_PLEXV, &FONT_PLEXB}, {"inter", &FONT_INTERS, &FONT_INTERV, &FONT_INTERB},
+        };
         uint32_t q;
         char nm[40];
-        for (q = 0; q < 2u; q++) {
-            BIG = q ? &FONT_L : &FONT_N2, VAL = q ? &FONT_S : &FONT_N;
+        for (q = 0; q < sizeof CF / sizeof CF[0]; q++) {
+            SM = CF[q].s, VAL = CF[q].v, BIG = CF[q].b;
             song.rec = 1, song.sel = 1;
-            snprintf(nm, sizeof nm, "px-%s-tracks", VN[q]); shot(nm, scr_tracks);
+            snprintf(nm, sizeof nm, "font-%s-tracks", CF[q].n); shot(nm, scr_tracks);
             song.rec = 0, song.sel = 0;
-            snprintf(nm, sizeof nm, "px-%s-env", VN[q]); shot(nm, scr_env);
-            song.sel = 3;
-            snprintf(nm, sizeof nm, "px-%s-drums", VN[q]); shot(nm, scr_drums);
+            snprintf(nm, sizeof nm, "font-%s-env", CF[q].n); shot(nm, scr_env);
         }
-        BIG = &FONT_N2, VAL = &FONT_N;
+        SM = &FONT_N, VAL = &FONT_S, BIG = &FONT_L;
     }
+#endif
     song.sel = 1;
     song.rec = 1;
     shot("op-tracks", scr_tracks);
