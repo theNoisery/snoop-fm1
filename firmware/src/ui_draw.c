@@ -51,7 +51,7 @@ UI_SMALL static void draw_head(void)
     ui.head_sig = sig;
     cv_begin(240, H_HEAD, C_BLACK);
     if (ui.msg_t) {
-        cv_text(4, 1, &FONT_S, ui.msg, C_HI);
+        cv_text(4, 1, F_S, ui.msg, C_HI);
         cv_blit(0, Y_HEAD);
         return;
     }
@@ -69,26 +69,26 @@ UI_SMALL static void draw_head(void)
         cv_icon(x, 2, ICON_TEMPO, C_GRAY);
         x += 14;
     }
-    x = cv_text(x, 1, &FONT_S, b, ui.bpm_t ? C_WHITE : C_HI);   /* white while SELECT turns it */
+    x = cv_text(x, 1, F_S, b, ui.bpm_t ? C_WHITE : C_HI);   /* white while SELECT turns it */
     if (mlu.on) {                                     /* MIDI LEARN on (2.6, GLO + F#3): in the octave's place */
-        cv_text(x + 12, 1, &FONT_S, "LEARN", C_AMB);
+        cv_text(x + 12, 1, F_S, "LEARN", C_AMB);
     } else if (song.octave) {
         str_cpy(b, song.octave > 0 ? "+" : "", 4);
         fmt_int(b + str_len(b), song.octave);
-        cv_text(x + 12, 1, &FONT_S, "OCT", C_GRAY);
-        cv_text(x + 40, 1, &FONT_S, b, C_HI);
+        cv_text(x + 12, 1, F_S, "OCT", C_GRAY);
+        cv_text(x + 40, 1, F_S, b, C_HI);
     }
     if (FELUCCA_ICONS) {                              /* the selected track: tape + number */
         cv_icon(156, 2, ICON_TAPE, C_GRAY);
         b[0] = (char)('1' + song.sel);
         b[1] = 0;
         cv_rect(168, 2, 12, 16, TE_COL[song.sel & 3u]);
-        cv_text(170, 1, &FONT_S, b, C_BLACK);
+        cv_text(170, 1, F_S, b, C_BLACK);
     } else {
         b[0] = 'T';
         b[1] = (char)('1' + song.sel);
         b[2] = 0;
-        cv_text(158, 1, &FONT_S, b, C_HI);
+        cv_text(158, 1, F_S, b, C_HI);
     }
     {   /* battery, 3 bars; USB when a host is there */
         int32_t lvl = batt_shown(), k;
@@ -101,7 +101,7 @@ UI_SMALL static void draw_head(void)
         for (k = 0; k < lvl; k++)
             cv_rect(bx + 2 + k * 5, 6, 3, 5, lvl == 1 && batt_level() <= 1 ? C_WHITE : C_HI);
         if (usb.config && !usb.suspended)
-            cv_text(bx - 28, 1, &FONT_S, "USB", C_DIM);
+            cv_text(bx - 28, 1, F_S, "USB", C_DIM);
     }
     cv_blit(0, Y_HEAD);
 }
@@ -131,9 +131,9 @@ UI_SMALL static void draw_column(uint32_t c, const char *label, const char *val,
     int32_t x, gw = 52, fx;
     if (icon == ICON_AUTO)
         icon = icon_for_label(label);
-    fit(l, label, &FONT_S, 54 - LABEL_X);
-    fit(v, val, &FONT_S, is_eng_name(val) ? 56 : 40);   /* engine names whole */
-    fit(u, unit, &FONT_S, 54 - text_w(&FONT_S, v) - 3);
+    fit(l, label, F_S, 54 - LABEL_X);
+    fit(v, val, F_S, is_eng_name(val) ? 56 : 40);   /* engine names whole */
+    fit(u, unit, F_S, 54 - text_w(F_S, v) - 3);
     str_cpy(key, l, 8);                                 /* cache key: texts + colour + gauge */
     str_cpy(key + str_len(key), "|", 2);
     str_cpy(key + str_len(key), v, 8);
@@ -148,7 +148,7 @@ UI_SMALL static void draw_column(uint32_t c, const char *label, const char *val,
     }
     if (c < 4u) {                                       /* (the big values: their own fit) */
         str_cpy(ui.big_l[c], l, 8);
-        fit(ui.big_v[c], val, &FONT_L, 112 - (unit[0] ? 4 : 0));
+        fit(ui.big_v[c], val, F_L, 112 - (unit[0] ? 4 : 0));
         str_cpy(ui.big_u[c], unit, 8);
         ui.big_c[c] = vc;
     }
@@ -163,9 +163,9 @@ UI_SMALL static void draw_column(uint32_t c, const char *label, const char *val,
     cv_begin(55, Y_SEP_END - Y_LABEL, C_BLACK);         /* x 4..58: the rule at 59 stays */
     if (FELUCCA_ICONS && icon != ICON_NONE && l[0])
         cv_icon(0, 1, icon, TE_COL[c & 3u]);            /* icon rows 1..10 = the label's cap height */
-    cv_text(l[0] ? LABEL_X : 0, 0, &FONT_S, l, C_GRAY);
-    x = cv_text(0, Y_VALUE - Y_LABEL, &FONT_S, v, vc);
-    cv_text(x + 3, Y_VALUE - Y_LABEL, &FONT_S, u, C_DIM);
+    cv_text(l[0] ? LABEL_X : 0, 0, F_S, l, C_GRAY);
+    x = cv_text(0, Y_VALUE - Y_LABEL, F_S, v, vc);
+    cv_text(x + 3, Y_VALUE - Y_LABEL, F_S, u, C_DIM);
     if (ratio >= 0) {                                   /* gauge: track, fill, 1 px end line */
         int32_t gy = Y_GAUGE - Y_LABEL;
         fx = ratio * gw / 1000;
@@ -282,10 +282,10 @@ UI_SMALL static void graph_roll(const track_t *t, uint16_t c)
     fmt_int(b, (int32_t)v0 + 1);
     str_cpy(b + str_len(b), "-", 2);
     fmt_int(b + str_len(b), (int32_t)(v0 + nv > len ? len : v0 + nv));
-    cv_text(2, 0, &FONT_S, b, C_GRAY);
+    cv_text(2, 0, F_S, b, C_GRAY);
     str_cpy(b, "ZOOM ", 12);
     fmt_int(b + 5, (int32_t)nv);
-    cv_text(238 - text_w(&FONT_S, b), 0, &FONT_S, b, C_DIM);
+    cv_text(238 - text_w(F_S, b), 0, F_S, b, C_DIM);
     for (i = (uint32_t)lo; i <= (uint32_t)hi; i++) {    /* rows: the black keys' bands, the C's ruled and named */
         int32_t y = bot - ((int32_t)i - lo + 1) * rh;
         uint32_t pc = i % 12u;
@@ -293,7 +293,7 @@ UI_SMALL static void graph_roll(const track_t *t, uint16_t c)
             cv_rect(x0, y, w, rh, TE_G1);
         if (!pc) {
             note_name(b, i);
-            cv_text(0, y + rh / 2 - 6, &FONT_S, b, C_DIM);
+            cv_text(0, y + rh / 2 - 6, F_S, b, C_DIM);
             cv_rect(x0, y + rh - 1, w, 1, C_GRAY);
         }
     }
@@ -328,7 +328,7 @@ UI_SMALL static void graph_roll(const track_t *t, uint16_t c)
                 cv_rect(xa - 2, y - 2, xb - xa + 4, 1, C_WHITE), cv_rect(xa - 2, y + rh - 1, xb - xa + 4, 1, C_WHITE);
                 cv_rect(xa - 2, y - 2, 1, rh + 2, C_WHITE), cv_rect(xb + 1, y - 2, 1, rh + 2, C_WHITE);
                 note_name(b, st->note[j]);
-                cv_text(xa, y - 15 < top ? y + rh + 1 : y - 15, &FONT_S, b, C_WHITE);
+                cv_text(xa, y - 15 < top ? y + rh + 1 : y - 15, F_S, b, C_WHITE);
             }
         }
     }
@@ -477,8 +477,8 @@ UI_SMALL static void graph_browse(void)
         }
         if (sel)
             cv_rect(4, y + 6, 3, 3, C_WHITE);
-        cv_text(14, y, &FONT_S, tag, sel ? C_GRAY : C_DIM);
-        cv_text(54, y, &FONT_S, nm, sel ? C_WHITE : C_GRAY);
+        cv_text(14, y, F_S, tag, sel ? C_GRAY : C_DIM);
+        cv_text(54, y, F_S, nm, sel ? C_WHITE : C_GRAY);
     }
 }
 
@@ -498,8 +498,8 @@ UI_SMALL static void graph_user(void)
             str_cpy(nm, "EMPTY", sizeof nm);
         if (sel)
             cv_rect(4, y + 6, 3, 3, C_WHITE);
-        cv_text(14, y, &FONT_S, tag, sel ? C_WHITE : C_GRAY);
-        cv_text(54, y, &FONT_S, nm, used ? (sel ? C_WHITE : C_HI) : C_DIM);
+        cv_text(14, y, F_S, tag, sel ? C_WHITE : C_GRAY);
+        cv_text(54, y, F_S, nm, used ? (sel ? C_WHITE : C_HI) : C_DIM);
     }
 }
 
@@ -515,8 +515,8 @@ UI_SMALL static void graph_slots(void)
         b[1] = 0;
         if (sel)
             cv_rect(4, y + 6, 3, 3, C_WHITE);
-        cv_text(14, y, &FONT_S, b, sel ? C_WHITE : C_GRAY);
-        cv_text(40, y, &FONT_S, project_used(i) ? "USED" : "EMPTY", project_used(i) ? (sel ? C_WHITE : C_HI) : C_DIM);
+        cv_text(14, y, F_S, b, sel ? C_WHITE : C_GRAY);
+        cv_text(40, y, F_S, project_used(i) ? "USED" : "EMPTY", project_used(i) ? (sel ? C_WHITE : C_HI) : C_DIM);
     }
 }
 
@@ -594,26 +594,26 @@ UI_SMALL static void draw_tracks(void)
             b[0] = (char)('1' + c);
             b[1] = 0;
             cv_begin(54, 16, C_BLACK);
-            cv_text(0, 0, &FONT_S, b, sel ? C_WHITE : C_GRAY);
+            cv_text(0, 0, F_S, b, sel ? C_WHITE : C_GRAY);
             if (sel)
                 cv_rect(0, 15, 8, 1, C_WHITE);
             if (st == 1u || st == 2u) {
                 cv_rect(14, 5, 6, 6, st == 1u ? C_WHITE : C_AMB);
-                cv_text(24, 0, &FONT_S, st == 1u ? "REC" : "ARM", st == 1u ? C_WHITE : C_AMB);
+                cv_text(24, 0, F_S, st == 1u ? "REC" : "ARM", st == 1u ? C_WHITE : C_AMB);
             } else if (st) {
-                cv_text(14, 0, &FONT_S, "MUTE", C_DIM);
+                cv_text(14, 0, F_S, "MUTE", C_DIM);
             }
             cv_blit(x0, TS_HEAD_Y);
         }
         /* the sound: preset name (user preset, DRUM), cut to the column */
         trk_short_name(c, b);
-        while (b[0] && text_w(&FONT_S, b) > 54)
+        while (b[0] && text_w(F_S, b) > 54)
             b[str_len(b) - 1u] = 0;
         sig = str_hash(2u + sel, b);
         if (ui.force || sig != ts.name[c]) {
             ts.name[c] = sig;
             cv_begin(54, 16, C_BLACK);
-            cv_text(0, 0, &FONT_S, b, sel ? C_HI : C_DIM);
+            cv_text(0, 0, F_S, b, sel ? C_HI : C_DIM);
             cv_blit(x0, TS_NAME_Y);
         }
         /* fader (LEVEL) + meter of the output */
@@ -725,13 +725,13 @@ UI_SMALL static void graph_big(void)
         if (!ui.big_l[c][0])
             continue;
         if (n == 1u) {                                  /* one value: in the middle */
-            x0 = (240 - text_w(&FONT_L, ui.big_v[c]) - (ui.big_u[c][0] ? text_w(&FONT_S, ui.big_u[c]) + 4 : 0)) / 2;
+            x0 = (240 - text_w(F_L, ui.big_v[c]) - (ui.big_u[c][0] ? text_w(F_S, ui.big_u[c]) + 4 : 0)) / 2;
             y0 = 30;
         }
-        cv_text(x0, y0 + 2, &FONT_S, ui.big_l[c], TE_COL[c & 3u]);
-        x = cv_text(x0, y0 + 20, &FONT_L, ui.big_v[c], ui.big_c[c] == C_DIM ? C_DIM : ui.big_c[c] == C_WHITE ? C_WHITE : C_HI);
+        cv_text(x0, y0 + 2, F_S, ui.big_l[c], TE_COL[c & 3u]);
+        x = cv_text(x0, y0 + 20, F_L, ui.big_v[c], ui.big_c[c] == C_DIM ? C_DIM : ui.big_c[c] == C_WHITE ? C_WHITE : C_HI);
         if (ui.big_u[c][0])
-            cv_text(x + 4, y0 + 34, &FONT_S, ui.big_u[c], C_GRAY);
+            cv_text(x + 4, y0 + 34, F_S, ui.big_u[c], C_GRAY);
     }
 }
 
@@ -756,8 +756,8 @@ UI_SMALL static void draw_graph(void)
         graph_scope(c);
     } else if (drum_note) {                          /* a page the drum track has no use for */
         static const char *const L[2] = {"DRUM TRACK", "SEQ  TRACKS  GLO DRUMS"};
-        cv_text((240 - text_w(&FONT_S, L[0])) / 2, 26, &FONT_S, L[0], C_HI);
-        cv_text((240 - text_w(&FONT_S, L[1])) / 2, 52, &FONT_S, L[1], C_DIM);
+        cv_text((240 - text_w(F_S, L[0])) / 2, 26, F_S, L[0], C_HI);
+        cv_text((240 - text_w(F_S, L[1])) / 2, 52, F_S, L[1], C_DIM);
     } else {
         switch (pg->graph) {
         case GR_ADSR:
@@ -809,9 +809,9 @@ UI_SMALL static void draw_graph(void)
         int32_t x;
         top = 1;
         cv_rect(0, 0, 150, 50, C_BLACK);
-        cv_text(4, 0, &FONT_S, ui.focus_l, C_GRAY);
-        x = cv_text(4, 16, &FONT_L, ui.focus_v, C_WHITE);
-        cv_text(x + 4, 30, &FONT_S, ui.focus_u, C_DIM);
+        cv_text(4, 0, F_S, ui.focus_l, C_GRAY);
+        x = cv_text(4, 16, F_L, ui.focus_v, C_WHITE);
+        cv_text(x + 4, 30, F_S, ui.focus_u, C_DIM);
     }
     /* graphs keep out of the top G_OY rows: skip them unless something is (or was) there */
     cv_blit_from(0, Y_GRAPH, top || ui.graph_top || ui.force ? 0u : G_OY);
@@ -899,17 +899,17 @@ UI_SMALL static void draw_foot(void)
         cv_icon(x, 21, engine_icon(ename), C_GRAY);
         x += 14;
     }
-    fit(en, ename, &FONT_S, 90 - (x - 4));
-    x = cv_text(x, 20, &FONT_S, en, C_HI);
+    fit(en, ename, F_S, 90 - (x - 4));
+    x = cv_text(x, 20, F_S, en, C_HI);
     {
         char pf[16];
-        int32_t room = 236 - text_w(&FONT_S, ti) - 10 - (x + 10);
+        int32_t room = 236 - text_w(F_S, ti) - 10 - (x + 10);
         str_cpy(pf, pn, sizeof pf);
-        while (pf[0] && text_w(&FONT_S, pf) > room)
+        while (pf[0] && text_w(F_S, pf) > room)
             pf[str_len(pf) - 1u] = 0;
-        cv_text(x + 10, 20, &FONT_S, pf, C_AMB);
+        cv_text(x + 10, 20, F_S, pf, C_AMB);
     }
-    cv_text(236 - text_w(&FONT_S, ti), 20, &FONT_S, ti, C_GRAY);
+    cv_text(236 - text_w(F_S, ti), 20, F_S, ti, C_GRAY);
     cv_blit(0, Y_FOOT);
 }
 UI_SMALL static void draw_columns(void)

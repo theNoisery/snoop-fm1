@@ -26,10 +26,19 @@ FONTS = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 # SLOOP 2.6: Terminus Bold (the same 8 x 16 cell and advances as the regular one: no layout moves), drawn in
 # capitals only (gfx.c glyph); the regular ter-u16n.bdf stays for the web editor's font (gen_webfont.py)
 SIZES = [("S", "ter-u16b.bdf", 16, 1, True, 32, 255),   # Latin-1 (Hügelton needs the umlaut)
-         ("L", "ter-u16b.bdf", 16, 2, True, 32, 95),   # values / titles: digits, signs, capitals
-         ("N", "ter-u16n.bdf", 16, 1, True, 32, 126),  # SNOOP 0.12: the OP look's small text, regular, in lower case too
-         ("N2", "ter-u16n.bdf", 16, 2, True, 32, 126)]  # .. its titles and large values: N at 2x (no bitmaps of its own)
+         ("L", "ter-u16b.bdf", 16, 2, True, 32, 95)]   # values / titles: digits, signs, capitals
 PAD = 2
+# SNOOP 0.12: the OP look's fonts, Inter (SIL OFL 1.1, assets/fonts/Inter-LICENSE.txt; subset to Latin-1), anti-aliased,
+# tabular figures. Each glyph cropped to its ink (gfx.c cv_text: bits 2 = 2 pixels a byte, bits 3 = run-length coded);
+# (name, file, px, first, last, chars, rle, lower, cap): chars = None for every character first..last, else only those
+# (the others empty); lower: the font folds capitals to lower case (the labels, as the OP-1's); cap: the capitals' top
+# this far under the line's top, as Terminus' (S 3, L 6: Inter drops in where it was; ink above it, cut), None: the
+# line from the highest ink
+INTER = [("IS", "Inter-Medium-latin1.otf", 14, 32, 126, None, False, True, 3),     # labels, lists, units
+         ("IV", "Inter-SemiBold-latin1.otf", 16, 32, 126, None, False, False, 3),  # values, names
+         ("IB", "Inter-Bold-latin1.otf", 30, 32, 95, None, True, False, 6),        # titles, large values: capitals
+         ("IM", "Inter-Bold-latin1.otf", 40, 37, 57, "%-.0123456789", True, False, None),   # the visualiser's digits:
+         ("ID", "Inter-Bold-latin1.otf", 88, 37, 57, "%-.0123456789", True, False, None)]   # two in a column; the tempo
 
 
 def upscale(px_, w, h, scale):
@@ -124,6 +133,114 @@ def render(ttf, px, scale, pixel, first, last):
     return h * scale, glyphs
 
 
+def render_cropped(ttf, px, first, last, chars, cap):
+    """each glyph cropped to its ink: (adv, x0 from the pen, y0 from the line's top, w, h, alpha 0..15 rows); the line
+    from the top of the highest ink to the bottom of the lowest (digits only: as tall as a digit)"""
+    font = ImageFont.truetype(str(FONTS / ttf), px)
+    feats = ["tnum"]
+    want = [chr(c) for c in range(first, last + 1)]
+    m = px * 2
+    out, tops, bots = [], [], []
+    for ch in want:
+        adv = int(round(font.getlength(ch, features=feats)))
+        img = Image.new("L", (px * 4, px * 4), 0)
+        if chars is None or ch in chars:
+            ImageDraw.Draw(img).text((m, m), ch, font=font, fill=255, features=feats, anchor="ls")
+        bb = img.getbbox()
+        if bb and ch != " ":
+            g = img.crop(bb)
+            a = [min(15, (v + 8) // 17) for v in g.tobytes()]
+            w, h = g.size
+            # (a faint row or column at an edge: kept, it is part of the anti-aliasing)
+            out.append([adv, bb[0] - m, bb[1] - m, w, h, a])
+            tops.append(bb[1] - m)
+            bots.append(bb[3] - m)
+        else:
+            out.append([adv if (chars is None or ch in chars) else 0, 0, 0, 0, 0, []])
+    asc, desc = font.getmetrics()
+    top = min(tops) if cap is None else out[ord("H") - first][2] - cap
+    bot = max(bots)
+    for g in out:
+        g[2] -= top
+        if g[2] < 0:                                   # (ink above the line: cut)
+            cut = -g[2]
+            g[5] = g[5][cut * g[3]:]
+            g[4] -= cut
+            g[2] = 0
+    return bot - top, out
+
+
+def rle(a):
+    """nibbles: 1..14 an alpha; 0 n: n + 1 pixels of 0; 15 n: n + 1 pixels of 15 (runs over the rows)"""
+    nib, i = [], 0
+    while i < len(a):
+        v = a[i]
+        if v in (0, 15):
+            j = i
+            while j < len(a) and a[j] == v and j - i < 16:
+                j += 1
+            nib += [v, j - i - 1]
+            i = j
+        else:
+            nib.append(v)
+            i += 1
+    if len(nib) & 1:
+        nib.append(0)
+    return [(nib[k] << 4) | nib[k + 1] for k in range(0, len(nib), 2)]
+
+
+def unrle(d, n):
+    out, nib = [], [x for b in d for x in (b >> 4, b & 15)]
+    k = 0
+    while len(out) < n:
+        v = nib[k]
+        k += 1
+        if v in (0, 15):
+            out += [v] * (nib[k] + 1)
+            k += 1
+        else:
+            out.append(v)
+    return out
+
+
+def cropped(lines, name, ttf, px, first, last, chars, use_rle, lower, cap):
+    h, glyphs = render_cropped(ttf, px, first, last, chars, cap)
+    data, offs, box, adv = [], [], [], []
+    for a, x0, y0, w, gh, al in glyphs:
+        offs.append(len(data))
+        assert -PAD <= x0 < 256 - PAD and 0 <= y0 < 256 and w < 256 and gh < 256
+        box += [x0 + PAD, y0, w, gh]
+        adv.append(a)
+        if use_rle:
+            enc = rle(al)
+            assert unrle(enc, len(al)) == al, "the run-length code must give the glyph back"
+            data += enc
+        else:
+            for y in range(gh):
+                row = al[y * w:(y + 1) * w] + [0]
+                for x in range(0, w, 2):
+                    data.append((row[x] << 4) | row[x + 1])
+    assert len(data) < 65536
+    lines.append(f"static const uint8_t FONT_{name}_DATA[{len(data)}] = {{")
+    for i in range(0, len(data), 24):
+        lines.append("    " + ", ".join(f"0x{b:02x}" for b in data[i:i + 24]) + ",")
+    lines.append("};")
+    n = len(glyphs)
+    lines.append(f"static const uint16_t FONT_{name}_OFF[{n}] = {{" + ", ".join(map(str, offs)) + "};")
+    lines.append(f"static const uint8_t FONT_{name}_ADV[{n}] = {{" + ", ".join(map(str, adv)) + "};")
+    lines.append(f"static const uint8_t FONT_{name}_BOX[{4 * n}] = {{" + ", ".join(map(str, box)) + "};")
+    lines.append(f"static const felucca_font_t FONT_{name} = {{ {h}, {PAD}, {first}, {last}, {2 if lower else 0}, "
+                 f"FONT_{name}_ADV, FONT_{name}_BOX, FONT_{name}_OFF, FONT_{name}_DATA, {3 if use_rle else 2} }};")
+    lines.append("")
+    if lower:                                          # the same glyphs, the case as given (no bytes of its own)
+        lines.append(f"static const felucca_font_t FONT_{name}C = {{ {h}, {PAD}, {first}, {last}, 0, "
+                     f"FONT_{name}_ADV, FONT_{name}_BOX, FONT_{name}_OFF, FONT_{name}_DATA, {3 if use_rle else 2} }};")
+        lines.append("")
+    size = len(data) + n * 7
+    print(f"font {name}: {ttf} {px}px h {h}, digit adv {adv[ord('0') - first]}, {len(data)} B + {n * 7} B")
+    return size
+
+
 def main(out):
     lines = [f"/* generated by tools/gen_font.py from {SIZES[0][1]} */",
              "#pragma once", "#include <stdint.h>", f"#define FONT_PAD {PAD}  /* x scale for L, see below */", ""]
@@ -181,6 +298,8 @@ def main(out):
         if scale == 1:
             bases[ttf] = (name, first, h, glyphs, one)
         print(f"font {name}: {ttf} {px}px h {h}, digit adv {glyphs[ord('0') - first][0]}, {len(data)} B")
+    total = sum(cropped(lines, *f) for f in INTER)
+    print(f"fonts Inter: {total} B")
     Path(out).write_text("\n".join(lines))
 
 

@@ -118,7 +118,7 @@ UI_SMALL static void draw_menu(void)
     if (ui.force)                                   /* head + rule + two bands cover rows 0..229 */
         lcd_fill(0, H_HEAD + 1 + 124 + 95, 240, 240 - (H_HEAD + 1 + 124 + 95), C_BLACK);
     cv_begin(240, H_HEAD, C_BLACK);
-    cv_text(4, 1, &FONT_S, ui.menu == 2 ? "ABOUT" : "MENU", C_HI);
+    cv_text(4, 1, F_S, ui.menu == 2 ? "ABOUT" : "MENU", C_HI);
     if (ui.menu != 2) {                             /* the section and its number, as a page's "ENV DEST 2/2" */
         char t[16];
         str_cpy(t, MS_NAME[sec], sizeof t);
@@ -126,7 +126,7 @@ UI_SMALL static void draw_menu(void)
         fmt_int(t + str_len(t), (int32_t)sec + 1);
         str_cpy(t + str_len(t), "/", 2);
         fmt_int(t + str_len(t), MS_COUNT);
-        cv_text(236 - text_w(&FONT_S, t), 1, &FONT_S, t, C_GRAY);
+        cv_text(236 - text_w(F_S, t), 1, F_S, t, C_GRAY);
     }
     cv_blit(0, Y_HEAD);
     lcd_fill(0, H_HEAD, 240, 1, C_LINE);
@@ -134,44 +134,44 @@ UI_SMALL static void draw_menu(void)
         cv_begin(240, pass ? 95u : 124u, C_BLACK);
         cv_oy = pass ? -124 : 0;
         if (ui.menu == 2) {
-            cv_text(4, 4, &FONT_L, "SNOOP", C_WHITE);
+            cv_text(4, 4, F_L, "SNOOP", C_WHITE);
             {                                       /* (SNOOP) The Noisery's bars */
                 static const uint8_t BAR[9] = {4, 8, 14, 22, 30, 22, 16, 10, 6};
                 uint32_t k;
                 for (k = 0; k < 9u; k++)
                     cv_rect(104 + (int32_t)k * 5, 32 - BAR[k], 2, BAR[k], C_WHITE);
             }
-            cv_text(4, 36, &FONT_S, "THE NOISERY", C_HI);
-            cv_text(236 - text_w(&FONT_S, FELUCCA_VERSION), 36, &FONT_S, FELUCCA_VERSION, C_HI);
-            cv_text(4, 54, &FONT_S, "SLOOP + FELUCCA", C_AMB);
-            cv_text(236 - text_w(&FONT_S, __DATE__), 54, &FONT_S, __DATE__, C_GRAY);   /* build date */
-            cv_text(cv_text(4, 72, &FONT_S, "LEO KUROSHITA", C_HI) + 8, 72, &FONT_S, "@KUROGEDELIC", C_AMB);
-            cv_text(4, 88, &FONT_S, "H\xDCGELTON INSTRUMENTS", C_HI);   /* Latin-1 U-umlaut */
-            cv_text(4, 104, &FONT_S, "HUGELTON.COM", C_AMB);
+            cv_text(4, 36, F_S, "THE NOISERY", C_HI);
+            cv_text(236 - text_w(F_S, FELUCCA_VERSION), 36, F_S, FELUCCA_VERSION, C_HI);
+            cv_text(4, 54, F_S, "SLOOP + FELUCCA", C_AMB);
+            cv_text(236 - text_w(F_S, __DATE__), 54, F_S, __DATE__, C_GRAY);   /* build date */
+            cv_text(cv_text(4, 72, F_S, "LEO KUROSHITA", C_HI) + 8, 72, F_S, "@KUROGEDELIC", C_AMB);
+            cv_text(4, 88, F_S, "H\xDCGELTON INSTRUMENTS", C_HI);   /* Latin-1 U-umlaut */
+            cv_text(4, 104, F_S, "HUGELTON.COM", C_AMB);
 #if FELUCCA_CPU1
             {
                 char sv[12];
                 cpu1_supplies(sv);                  /* (2.7) SYSVDD, VDC14 now: 1.38V 1.60V (fm1_sys.h) */
-                cv_text(236 - text_w(&FONT_S, sv), 104, &FONT_S, sv, C_GRAY);
+                cv_text(236 - text_w(F_S, sv), 104, F_S, sv, C_GRAY);
             }
 #endif
-            cv_text(4, 119, &FONT_S, "GPL-3.0, NO WARRANTY", C_HI);
+            cv_text(4, 119, F_S, "GPL-3.0, NO WARRANTY", C_HI);
 #if FELUCCA_CPU1                                    /* (the host tests include this file without cpu1.c) */
-            cv_text(236 - text_w(&FONT_S, cpu1_label()), 119, &FONT_S, cpu1_label(), C_AMB);   /* 2 CORES / 1 CORE (cpu1.c) */
+            cv_text(236 - text_w(F_S, cpu1_label()), 119, F_S, cpu1_label(), C_AMB);   /* 2 CORES / 1 CORE (cpu1.c) */
 #endif
-            cv_text(4, 132, &FONT_S, "GITHUB.COM/THENOISERY", C_AMB);   /* (the source of this firmware) */
-            cv_text(4, 146, &FONT_S, "FONT: TERMINUS (OFL)", C_DIM);
-            cv_text(4, 159, &FONT_S, "SAMPLES: VERSILIAN (CC0)", C_DIM);
-            cv_text(4, 172, &FONT_S, "+ SONIC PI (CC0)", C_DIM);
-            cv_text(4, 185, &FONT_S, "PHASE: CRISPYZEBRA (GPL)", C_DIM);
-            cv_text(4, 198, &FONT_S, "VOICE: REF. KLATTSCH (MIT)", C_DIM);
+            cv_text(4, 132, F_S, "GITHUB.COM/THENOISERY", C_AMB);   /* (the source of this firmware) */
+            cv_text(4, 146, F_S, "FONT: TERMINUS (OFL)", C_DIM);
+            cv_text(4, 159, F_S, "SAMPLES: VERSILIAN (CC0)", C_DIM);
+            cv_text(4, 172, F_S, "+ SONIC PI (CC0)", C_DIM);
+            cv_text(4, 185, F_S, "PHASE: CRISPYZEBRA (GPL)", C_DIM);
+            cv_text(4, 198, F_S, "VOICE: REF. KLATTSCH (MIT)", C_DIM);
         } else {
             int32_t x = 4;
             for (i = 0; i < MS_COUNT; i++) {        /* the sections as tabs: this one lit */
-                int32_t w = text_w(&FONT_S, MS_NAME[i]);
+                int32_t w = text_w(F_S, MS_NAME[i]);
                 if (i == sec)
                     cv_rect(x - 2, 3, w + 4, 18, C_LINE);
-                cv_text(x, 4, &FONT_S, MS_NAME[i], i == sec ? C_WHITE : C_DIM);
+                cv_text(x, 4, F_S, MS_NAME[i], i == sec ? C_WHITE : C_DIM);
                 x += w + 6;                         /* (2.7.1: five sections: 6, the last ends at 236) */
             }
             for (i = MS_FIRST[sec]; i < MS_FIRST[sec + 1u]; i++) {
@@ -182,14 +182,14 @@ UI_SMALL static void draw_menu(void)
                 const char *v = mi_value(i, &vc);
                 char k[4] = {'K', (char)('1' + r), 0, 0};
                 cv_rect(4, y + 2, 4, MI_DY - 8, cur ? C_WHITE : TE_COL[r & 3u]);   /* the knob's colour */
-                xv = cv_text(14, y, &FONT_S, k, TE_COL[r & 3u]);
-                cv_text(xv + 6, y, &FONT_S, MI_NAME[i], cur ? C_WHITE : C_GRAY);
-                if (v[0] && text_w(&FONT_L, v) <= 222) {
-                    xv = cv_text(14, y + 16, &FONT_L, v, cur && vc == C_HI ? C_WHITE : vc);
+                xv = cv_text(14, y, F_S, k, TE_COL[r & 3u]);
+                cv_text(xv + 6, y, F_S, MI_NAME[i], cur ? C_WHITE : C_GRAY);
+                if (v[0] && text_w(F_L, v) <= 222) {
+                    xv = cv_text(14, y + 16, F_L, v, cur && vc == C_HI ? C_WHITE : vc);
                 } else if (v[0]) {                      /* (too wide for the large type: WHITE KEYS) */
-                    xv = cv_text(14, y + 24, &FONT_S, v, cur && vc == C_HI ? C_WHITE : vc);
+                    xv = cv_text(14, y + 24, F_S, v, cur && vc == C_HI ? C_WHITE : vc);
                 } else {
-                    xv = cv_text(14, y + 24, &FONT_S, "OCT+ OPENS", cur ? C_WHITE : C_DIM);
+                    xv = cv_text(14, y + 24, F_S, "OCT+ OPENS", cur ? C_WHITE : C_DIM);
                 }
                 if (i == MI_COLOR) {                    /* the palette's colours */
                     uint32_t q;
@@ -197,18 +197,18 @@ UI_SMALL static void draw_menu(void)
                         cv_rect(xv + 10 + (int32_t)q * 14, y + 28, 10, 10, pal[q]);
                 }
                 if (i == MI_RATE && usb_rate != usb_rate_now())
-                    cv_text(xv + 8, y + 30, &FONT_S, "RESTART", C_AMB);   /* (usb.c: at the next start) */
+                    cv_text(xv + 8, y + 30, F_S, "RESTART", C_AMB);   /* (usb.c: at the next start) */
 #if FELUCCA_CDC
                 if (i == MI_SERIAL && usb_serial != usb_cdc_now())
-                    cv_text(xv + 8, y + 30, &FONT_S, "RESTART", C_AMB);   /* (usb.c: at the next start) */
+                    cv_text(xv + 8, y + 30, F_S, "RESTART", C_AMB);   /* (usb.c: at the next start) */
 #endif
                 if (i == MI_CPU1 && !mi_cpu1_have())
-                    cv_text(xv + 8, y + 30, &FONT_S, "NOT RUNNING", C_AMB);   /* (cpu1.c: ABOUT says 1 CORE) */
+                    cv_text(xv + 8, y + 30, F_S, "NOT RUNNING", C_AMB);   /* (cpu1.c: ABOUT says 1 CORE) */
             }
             if (MS_FIRST[sec + 1u] - MS_FIRST[sec] <= 3u) {   /* (SYSTEM has four rows with 2ND CORE: its fourth
                                                                * row, ABOUT, takes the help's place) */
-                cv_text(4, MI_Y0 + 3 * MI_DY + 6, &FONT_S, "SELECT SECTION  KNOB SETS", C_DIM);
-                cv_text(4, MI_Y0 + 3 * MI_DY + 22, &FONT_S, "OCT+ OK   OCT- CLOSE", C_DIM);   /* (rows .. 218) */
+                cv_text(4, MI_Y0 + 3 * MI_DY + 6, F_S, "SELECT SECTION  KNOB SETS", C_DIM);
+                cv_text(4, MI_Y0 + 3 * MI_DY + 22, F_S, "OCT+ OK   OCT- CLOSE", C_DIM);   /* (rows .. 218) */
             }
         }
         cv_oy = 0;

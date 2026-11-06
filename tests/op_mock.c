@@ -13,7 +13,7 @@ static uint16_t PC[4] = {OP_BLUE, RGB(255, 138, 40), OP_WHITE, OP_RED};   /* (or
 #ifdef OP_FONTS
 #include "cand_fonts.h"
 #endif
-static const felucca_font_t *BIG = &FONT_L, *VAL = &FONT_S, *SM = &FONT_N;   /* the pixel fonts of titles / values (a variant each) */
+static const felucca_font_t *BIG = &FONT_IB, *VAL = &FONT_IV, *SM = &FONT_IS;   /* the pixel fonts of titles / values (a variant each) */
 static void ntext(int32_t x, int32_t y, const char *s, uint16_t c) { cv_text(x, y, SM, s, c); }
 static int32_t big(int32_t x, int32_t y, const char *s, uint16_t c) { return cv_text(x, y, BIG, s, c) - x; }
 static int32_t val(int32_t x, int32_t y, const char *s, uint16_t c) { return cv_text(x, y, VAL, s, c) - x; }
@@ -375,7 +375,7 @@ int main(int argc, char **argv)
 #ifdef OP_FONTS
     {   /* the candidate fonts: small (labels, lists), values, large (titles, the tempo) */
         static const struct { const char *n; const felucca_font_t *s, *v, *b; } CF[] = {
-            {"terminus", &FONT_N, &FONT_S, &FONT_L}, {"unifont", &FONT_UNIS, &FONT_UNIV, &FONT_UNIB},
+            {"terminus", &FONT_S, &FONT_S, &FONT_L}, {"unifont", &FONT_UNIS, &FONT_UNIV, &FONT_UNIB},
             {"silkscreen", &FONT_SILKS, &FONT_SILKV, &FONT_SILKB}, {"pixelify", &FONT_PXFS, &FONT_PXFV, &FONT_PXFB},
             {"jura", &FONT_JURAS, &FONT_JURAV, &FONT_JURAB}, {"tektur", &FONT_TEKS, &FONT_TEKV, &FONT_TEKB},
             {"geist", &FONT_GEISTS, &FONT_GEISTV, &FONT_GEISTB}, {"jetbrains", &FONT_JBMS, &FONT_JBMV, &FONT_JBMB},
@@ -390,7 +390,7 @@ int main(int argc, char **argv)
             song.rec = 0, song.sel = 0;
             snprintf(nm, sizeof nm, "font-%s-env", CF[q].n); shot(nm, scr_env);
         }
-        SM = &FONT_N, VAL = &FONT_S, BIG = &FONT_L;
+        SM = &FONT_IS, VAL = &FONT_IV, BIG = &FONT_IB;
     }
 #endif
     song.sel = 1;

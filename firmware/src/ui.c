@@ -476,18 +476,18 @@ UI_SMALL static uint32_t octp_filter(uint32_t pressed, uint32_t *ev)
 UI_SMALL static void sheet_bar(int32_t y, const char *const *lab, const char *const *val, uint32_t sel, uint16_t acc)
 {
     uint32_t prev = (sel + 5u) % 6u, next = (sel + 1u) % 6u, i;
-    int32_t x = 6, lw = text_w(&FONT_S, lab[sel]);
-    int32_t vw = val[sel] && val[sel][0] ? text_w(&FONT_S, val[sel]) + 6 : 0;
+    int32_t x = 6, lw = text_w(F_S, lab[sel]);
+    int32_t vw = val[sel] && val[sel][0] ? text_w(F_S, val[sel]) + 6 : 0;
     cv_rect(0, y, 240, 16, C_BLACK);                   /* the strip */
     cv_rect(0, y, 240, 1, C_LINE);
-    cv_text(x, y + 2, &FONT_S, lab[prev], C_DIM);      /* the row before (faint) */
-    x += text_w(&FONT_S, lab[prev]) + 10;
+    cv_text(x, y + 2, F_S, lab[prev], C_DIM);      /* the row before (faint) */
+    x += text_w(F_S, lab[prev]) + 10;
     cv_rect(x - 3, y + 1, lw + vw + 6, 14, acc);       /* the row under edit, lit */
-    cv_text(x, y + 2, &FONT_S, lab[sel], C_WHITE);
+    cv_text(x, y + 2, F_S, lab[sel], C_WHITE);
     if (vw)
-        cv_text(x + lw + 6, y + 2, &FONT_S, val[sel], C_WHITE);
+        cv_text(x + lw + 6, y + 2, F_S, val[sel], C_WHITE);
     x += lw + vw + 10;
-    cv_text(x, y + 2, &FONT_S, lab[next], C_DIM);      /* the row after (faint) */
+    cv_text(x, y + 2, F_S, lab[next], C_DIM);      /* the row after (faint) */
     for (i = 0; i < 6u; i++)                            /* the place in the six */
         cv_rect(200 + (int32_t)i * 6, y + 6, 4, 4, i == sel ? acc : C_DIM);
 }

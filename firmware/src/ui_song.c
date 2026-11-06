@@ -33,14 +33,14 @@ UI_SMALL static void song_screen_draw(void)
     previous = ui.msg_t ? ~sig : sig;               /* redraw after a message expires */
     /* Draw one small band at a time: never exceed the 124-row canvas. */
     cv_begin(240, 40, C_BLACK);
-    cv_text(4, 4, &FONT_L, "SONG", C_WHITE);
-    cv_text(76, 20, &FONT_S, arrangement_enabled ? "song mode" : "loop mode", arrangement_enabled ? SC[3] : TE_G3);
-    cv_text(76, 4, &FONT_S, ARR_SYNC_LOOP(&arrangement) ? "sync loop" : "sync bar",   /* (SNOOP) PRESETS */
+    cv_text(4, 4, F_L, "SONG", C_WHITE);
+    cv_text(76, 20, F_S, arrangement_enabled ? "song mode" : "loop mode", arrangement_enabled ? SC[3] : TE_G3);
+    cv_text(76, 4, F_S, ARR_SYNC_LOOP(&arrangement) ? "sync loop" : "sync bar",   /* (SNOOP) PRESETS */
             ARR_SYNC_LOOP(&arrangement) ? SC[2] : TE_G3);
     fmt_int(b, song.g[G_BPM]);
-    cv_text(236 - text_w(&FONT_S, b) - 28, 4, &FONT_S, b, C_WHITE);
-    cv_text(236 - 24, 4, &FONT_S, "bpm", TE_G3);
-    cv_text(236 - text_w(&FONT_S, song.playing ? "playing" : "stopped"), 20, &FONT_S,
+    cv_text(236 - text_w(F_S, b) - 28, 4, F_S, b, C_WHITE);
+    cv_text(236 - 24, 4, F_S, "bpm", TE_G3);
+    cv_text(236 - text_w(F_S, song.playing ? "playing" : "stopped"), 20, F_S,
             song.playing ? "playing" : "stopped", song.playing ? SC[1] : TE_G3);
     cv_rect(0, 39, 240, 1, TE_G1);
     cv_blit(0, 0);
@@ -53,16 +53,16 @@ UI_SMALL static void song_screen_draw(void)
             uint16_t sc = SC[e->scene & 3u];
             int32_t w;
             fmt_int(b, (int32_t)pos + 1);
-            cv_text(4, 5, &FONT_S, b, selected ? C_WHITE : TE_G3);
+            cv_text(4, 5, F_S, b, selected ? C_WHITE : TE_G3);
             cv_rect(30, 3, 22, 20, used ? sc : TE_G1);   /* the section tile */
             b[0] = (char)('A' + e->scene); b[1] = 0;
-            cv_text(37, 5, &FONT_S, b, used ? C_BLACK : sc);
+            cv_text(37, 5, F_S, b, used ? C_BLACK : sc);
             w = e->bars * 120 / 64 + 4;                 /* its length as a bar */
             cv_rect(60, 9, w, 8, used ? (selected ? sc : TE_G2) : TE_G1);
             fmt_int(b, e->bars);
             str_cpy(b + str_len(b), ARR_SYNC_LOOP(&arrangement) ? (e->bars == 1 ? " loop" : " loops")   /* (SNOOP) */
                                                                : (e->bars == 1 ? " bar" : " bars"), 8);
-            cv_text(60 + w + 6, 5, &FONT_S, used ? b : "empty", selected ? C_WHITE : TE_G3);
+            cv_text(60 + w + 6, 5, F_S, used ? b : "empty", selected ? C_WHITE : TE_G3);
             if (arrangement_clock.running && arrangement_clock.index == pos) {
                 cv_rect(60, 19, (int32_t)(arrangement_clock.bar + 1u) * w / (e->bars ? e->bars : 1), 2, C_WHITE);
                 cv_rect(226, 9, 9, 9, SC[1]);
@@ -74,16 +74,16 @@ UI_SMALL static void song_screen_draw(void)
     cv_begin(240, 68, C_BLACK);
     if (ui.msg_t) {
         cv_rect(0, 4, 240, 30, C_WHITE);
-        cv_text((240 - text_w(&FONT_S, ui.msg)) / 2, 11, &FONT_S, ui.msg, C_BLACK);
+        cv_text((240 - text_w(F_S, ui.msg)) / 2, 11, F_S, ui.msg, C_BLACK);
     } else {
         const char *const L[4] = {"entry", "section", ARR_SYNC_LOOP(&arrangement) ? "loops" : "bars", "length"};
         for (i = 0; i < 4u; i++) {
             cv_rect((int32_t)i * 60 + 4, 6, 52, 3, SC[i]);
-            cv_text((int32_t)i * 60 + 30 - text_w(&FONT_S, L[i]) / 2, 12, &FONT_S, L[i], TE_G3);
+            cv_text((int32_t)i * 60 + 30 - text_w(F_S, L[i]) / 2, 12, F_S, L[i], TE_G3);
         }
     }
-    cv_text(4, 34, &FONT_S, "rec: store   save: chain", TE_G4);
-    cv_text(4, 50, &FONT_S, "oct-: loop/song  oct+ x2: load", TE_G3);
+    cv_text(4, 34, F_S, "rec: store   save: chain", TE_G4);
+    cv_text(4, 50, F_S, "oct-: loop/song  oct+ x2: load", TE_G3);
     cv_blit(0, 172);
 }
 

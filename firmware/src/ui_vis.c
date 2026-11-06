@@ -49,17 +49,7 @@ static const uint8_t VIS_EDGE[VIS_NB + 1u] = {1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2
                                               69, 77, 87, 98, 110, 124, 139, 157, 176, 198, 223, 232};
 
 /* the OP-1's colours */
-#define OP_BG RGB(0, 0, 0)                  /* (0.9.1: black, as the other screens: a grey looked faded on the FM-1) */
-#define OP_BLUE RGB(84, 120, 246)
-#define OP_GREEN RGB(22, 222, 140)
-#define OP_WHITE RGB(236, 236, 242)
-#define OP_RED RGB(246, 52, 84)
-#define OP_LAV RGB(184, 184, 236)
-#define OP_TEAL RGB(30, 98, 112)
-#define OP_GREY RGB(124, 124, 140)
-#define OP_DIM RGB(72, 72, 88)
-#define OP_DARK RGB(44, 44, 54)
-#define OP_MAROON RGB(140, 32, 56)
+/* (the OP colours: gfx.c, SNOOP 0.12: the OP look's theme uses them too) */
 static const uint16_t OP_TRK[4] = {OP_BLUE, OP_GREEN, OP_WHITE, OP_RED};
 
 static int vis_shown(void) { return vis_on && !ui.home && !ui.menu && cur_page()->scope == SC_TRK; }
@@ -264,152 +254,27 @@ static void op_circle(int32_t cx, int32_t cy, int32_t r, int32_t w, uint16_t c)
         op_arc(cx, cy, r, 0, 1024, w, c);
 }
 
-/* ---- a thin vector font, after the OP-1's: glyphs drawn on a 12 x 20 grid by strokes:
- *   VM x y        move;           VL x y      a line to;       VN    the pen up
- *   VA cx cy rx ry a0 a1          an arc of an ellipse, from the pen if it is down (a in 1/32 turn, 0 = right,
- *                                 8 = down; a1 < a0: the other way round)
- *   VD x y        a dot;          VE          the end
- * the first number: the advance (the glyph and the gap after it) */
-enum { VE = -100, VM = -101, VL = -102, VA = -103, VN = -104, VD = -105 };
-#define G_(...) {__VA_ARGS__, VE}
-static const int8_t VG_0[] = G_(17, VA, 6, 6, 6, 6, 16, 32, VL, 12, 14, VA, 6, 14, 6, 6, 0, 16, VL, 0, 6);
-static const int8_t VG_1[] = G_(17, VM, 2, 4, VL, 7, 0, VL, 7, 20);
-static const int8_t VG_2[] = G_(17, VA, 6, 6, 6, 6, 17, 36, VL, 0, 20, VL, 12, 20);
-static const int8_t VG_3[] = G_(17, VA, 6, 5, 6, 5, 18, 40, VA, 6, 15, 6, 5, 24, 46);
-static const int8_t VG_4[] = G_(17, VM, 9, 20, VL, 9, 0, VL, 0, 14, VL, 12, 14);
-static const int8_t VG_5[] = G_(17, VM, 11, 0, VL, 1, 0, VL, 0, 9, VA, 6, 14, 6, 6, 21, 44);
-static const int8_t VG_6[] = G_(17, VM, 9, 0, VL, 1, 10, VA, 6, 14, 6, 6, 18, 50);
-static const int8_t VG_7[] = G_(17, VM, 0, 0, VL, 12, 0, VL, 3, 20);
-static const int8_t VG_8[] = G_(17, VA, 6, 5, 5, 5, 0, 32, VN, VA, 6, 15, 6, 5, 24, 56);
-static const int8_t VG_9[] = G_(17, VA, 6, 6, 6, 6, 2, 34, VL, 3, 20);
-static const int8_t VG_COLON[] = G_(7, VD, 1, 6, VD, 1, 17);
-static const int8_t VG_DOT[] = G_(7, VD, 1, 19);
-static const int8_t VG_SLASH[] = G_(15, VM, 10, 0, VL, 0, 20);
-static const int8_t VG_PCT[] = G_(17, VA, 3, 4, 3, 4, 0, 32, VN, VM, 12, 0, VL, 0, 20, VN, VA, 9, 16, 3, 4, 0, 32);
-static const int8_t VG_MINUS[] = G_(15, VM, 1, 10, VL, 11, 10);
-static const int8_t VG_PLUS[] = G_(15, VM, 1, 10, VL, 11, 10, VM, 6, 5, VL, 6, 15);
-static const int8_t VG_HASH[] = G_(16, VM, 4, 2, VL, 3, 18, VM, 9, 2, VL, 8, 18, VM, 1, 7, VL, 12, 7, VM, 0, 13, VL, 11, 13);
-static const int8_t VG_SP[] = G_(10);
-static const int8_t VG_A[] = G_(16, VM, 0, 20, VL, 6, 0, VL, 12, 20, VM, 2, 13, VL, 10, 13);
-static const int8_t VG_B[] = G_(16, VM, 0, 20, VL, 0, 0, VL, 6, 0, VA, 6, 5, 5, 5, 24, 40, VL, 0, 10, VM, 6, 10,
-                                VA, 6, 15, 6, 5, 24, 40, VL, 0, 20);
-static const int8_t VG_C[] = G_(16, VA, 6, 10, 6, 10, 28, 4);
-static const int8_t VG_D[] = G_(16, VM, 0, 0, VL, 0, 20, VL, 4, 20, VA, 4, 10, 8, 10, 8, -8, VL, 0, 0);
-static const int8_t VG_E[] = G_(16, VM, 12, 0, VL, 0, 0, VL, 0, 20, VL, 12, 20, VM, 0, 10, VL, 9, 10);
-static const int8_t VG_F[] = G_(16, VM, 12, 0, VL, 0, 0, VL, 0, 20, VM, 0, 10, VL, 9, 10);
-static const int8_t VG_G[] = G_(16, VA, 6, 10, 6, 10, 28, 0, VL, 7, 10);
-static const int8_t VG_H[] = G_(16, VM, 0, 0, VL, 0, 20, VM, 12, 0, VL, 12, 20, VM, 0, 10, VL, 12, 10);
-static const int8_t VG_I[] = G_(6, VM, 1, 0, VL, 1, 20);
-static const int8_t VG_J[] = G_(16, VM, 10, 0, VL, 10, 14, VA, 5, 14, 5, 6, 0, 16);
-static const int8_t VG_K[] = G_(16, VM, 0, 0, VL, 0, 20, VM, 12, 0, VL, 0, 12, VM, 4, 8, VL, 12, 20);
-static const int8_t VG_L[] = G_(15, VM, 0, 0, VL, 0, 20, VL, 11, 20);
-static const int8_t VG_M[] = G_(17, VM, 0, 20, VL, 0, 0, VL, 6, 12, VL, 12, 0, VL, 12, 20);
-static const int8_t VG_N[] = G_(16, VM, 0, 20, VL, 0, 0, VL, 12, 20, VL, 12, 0);
-static const int8_t VG_O[] = G_(17, VA, 6, 10, 6, 10, 0, 32);
-static const int8_t VG_P[] = G_(16, VM, 0, 20, VL, 0, 0, VL, 6, 0, VA, 6, 5, 6, 5, 24, 40, VL, 0, 10);
-static const int8_t VG_Q[] = G_(17, VA, 6, 10, 6, 10, 0, 32, VN, VM, 7, 14, VL, 12, 20);
-static const int8_t VG_R[] = G_(16, VM, 0, 20, VL, 0, 0, VL, 6, 0, VA, 6, 5, 6, 5, 24, 40, VL, 0, 10, VM, 6, 10, VL, 12, 20);
-static const int8_t VG_S[] = G_(16, VA, 6, 5, 6, 5, 29, 8, VA, 6, 15, 6, 5, 24, 43);
-static const int8_t VG_T[] = G_(16, VM, 0, 0, VL, 12, 0, VM, 6, 0, VL, 6, 20);
-static const int8_t VG_U[] = G_(16, VM, 0, 0, VL, 0, 14, VA, 6, 14, 6, 6, 16, 0, VL, 12, 0);
-static const int8_t VG_V[] = G_(16, VM, 0, 0, VL, 6, 20, VL, 12, 0);
-static const int8_t VG_W[] = G_(17, VM, 0, 0, VL, 3, 20, VL, 6, 6, VL, 9, 20, VL, 12, 0);
-static const int8_t VG_X[] = G_(16, VM, 0, 0, VL, 12, 20, VM, 12, 0, VL, 0, 20);
-static const int8_t VG_Y[] = G_(16, VM, 0, 0, VL, 6, 10, VL, 12, 0, VM, 6, 10, VL, 6, 20);
-static const int8_t VG_Z[] = G_(16, VM, 0, 0, VL, 12, 0, VL, 0, 20, VL, 12, 20);
-#undef G_
-static const int8_t *const VG_AZ[26] = {VG_A, VG_B, VG_C, VG_D, VG_E, VG_F, VG_G, VG_H, VG_I, VG_J, VG_K, VG_L, VG_M,
-                                        VG_N, VG_O, VG_P, VG_Q, VG_R, VG_S, VG_T, VG_U, VG_V, VG_W, VG_X, VG_Y, VG_Z};
-static const int8_t *const VG_09[10] = {VG_0, VG_1, VG_2, VG_3, VG_4, VG_5, VG_6, VG_7, VG_8, VG_9};
-static const int8_t *vglyph(uint32_t ch)
+/* ---- the text: Inter (SNOOP 0.12, gfx.c FONT_I*; it was a thin vector font of its own, drawn by strokes): the size
+ * asked (a capital's height, px) picks the font: 10 the labels (lower case), 11..15 the values, 16..29 the titles,
+ * 29..59 digits (two in a column of 60 px), 60 up the large digits. The text's top left at x, y (the capitals' top); returns its width */
+static const felucca_font_t *vfont(int32_t h)
 {
-    if (ch >= 'a' && ch <= 'z')
-        ch -= 32u;
-    if (ch >= 'A' && ch <= 'Z') return VG_AZ[ch - 'A'];
-    if (ch >= '0' && ch <= '9') return VG_09[ch - '0'];
-    switch (ch) {
-    case ':': return VG_COLON;
-    case '.': return VG_DOT;
-    case '/': return VG_SLASH;
-    case '%': return VG_PCT;
-    case '-': return VG_MINUS;
-    case '+': return VG_PLUS;
-    case '#': return VG_HASH;
-    default: return VG_SP;
-    }
-}
-/* text, its top left at x, y (px), h px high, wide sx/sy of the grid's (256 = as high), strokes w (1/256 px);
- * returns its width (px) */
-/* (0.12) the glyphs' points on pixel centres: the same stroke falls the same way in every letter (even weight, even
- * height; a little of a pixel font's look) */
-static int32_t vsnap_off = 128;                     /* 128: on pixel centres (1 px strokes); 0: on their edges (2 px) */
-#define VSNAP(v) (((v) & ~255) + vsnap_off)
-static int32_t vtext_sx(int32_t x, int32_t y, int32_t h, int32_t sx, const char *s, int32_t w, uint16_t c)
-{
-    int32_t ky = h * 256 / 20, kx = ky * sx / 256, ox = PX(x), oy = PX(y);
-    w = h >= 36 ? 512 : 256;                        /* (0.12) whole pixels: 1, or 2 from 36 px up; crisp, the same
-                                                     * in every letter (the w asked for: no longer used) */
-    vsnap_off = h >= 36 ? 0 : 128;
-    op_maxblend = 1;
-    for (; *s; s++) {
-        const int8_t *g = vglyph((uint8_t)*s);
-        int32_t adv = g[0], px = 0, py = 0, down = 0;
-        g++;
-        if (!op_off_band(oy - w, oy + PX(h) + w))
-            while (*g != VE) {
-                int32_t op = *g++;
-                if (op == VM || op == VL) {
-                    int32_t nx = VSNAP(ox + g[0] * kx), ny = VSNAP(oy + g[1] * ky);
-                    g += 2;
-                    if (op == VL && down)
-                        op_line(px, py, nx, ny, w, c);
-                    px = nx, py = ny, down = 1;
-                } else if (op == VA) {
-                    int32_t cx = ox + g[0] * kx, cy = oy + g[1] * ky, rx = g[2] * kx, ry = g[3] * ky;
-                    int32_t a0 = g[4] * 32, a1 = g[5] * 32, n = (a1 - a0) / (h > 40 ? 16 : h > 16 ? 24 : 32), k;
-                    g += 6;
-                    if (n < 0) n = -n;
-                    if (n < 2) n = 2;
-                    for (k = 0; k <= n; k++) {
-                        uint32_t a = (uint32_t)(a0 + (a1 - a0) * k / n);
-                        int32_t nx = VSNAP(cx + ((icos(a) * (rx >> 4)) >> 11)), ny = VSNAP(cy + ((isin(a) * (ry >> 4)) >> 11));
-                        if (down)
-                            op_line(px, py, nx, ny, w, c);
-                        px = nx, py = ny, down = 1;
-                    }
-                } else if (op == VN) {
-                    down = 0;
-                } else if (op == VD) {
-                    op_disc(VSNAP(ox + g[0] * kx), VSNAP(oy + g[1] * ky), w * 3 / 4 + 64, c);
-                    g += 2;
-                }
-            }
-        ox += adv * kx;
-    }
-    op_maxblend = 0;
-    return (ox - PX(x)) >> 8;
+    return h >= 60 ? &FONT_ID : h >= 29 ? &FONT_IM : h >= 16 ? &FONT_IB : h >= 11 ? &FONT_IV : &FONT_IS;
 }
 static int32_t vtext(int32_t x, int32_t y, int32_t h, const char *s, int32_t w, uint16_t c)
 {
-    return vtext_sx(x, y, h, 256, s, w, c);
+    const felucca_font_t *f = vfont(h);
+    (void)w;
+    return cv_text(x, y - f->bw[('0' - f->first) * 4u + 1u], f, s, c) - x;   /* (the line's top: above the digits' top) */
 }
-static int32_t vtext_w(int32_t h, int32_t sx, const char *s)              /* its width, the last gap left out */
-{
-    int32_t n = 0, last = 0, ky = h * 256 / 20;
-    for (; *s; s++) {
-        const int8_t *g = vglyph((uint8_t)*s);
-        n += g[0];
-        last = g[0] >= 16 ? g[0] - 12 : g[0] >= 15 ? g[0] - 11 : 5;
-    }
-    return ((n - last) * (ky * sx / 256)) >> 8;
-}
+static int32_t vtext_w(int32_t h, const char *s) { return text_w(vfont(h), s); }
 static void vtext_c(int32_t cx, int32_t y, int32_t h, const char *s, int32_t w, uint16_t c)   /* centred on cx */
 {
-    vtext(cx - vtext_w(h, 256, s) / 2, y, h, s, w, c);
+    vtext(cx - vtext_w(h, s) / 2, y, h, s, w, c);
 }
 static void vtext_r(int32_t rx, int32_t y, int32_t h, const char *s, int32_t w, uint16_t c)   /* ending at rx */
 {
-    vtext(rx - vtext_w(h, 256, s), y, h, s, w, c);
+    vtext(rx - vtext_w(h, s), y, h, s, w, c);
 }
 
 /* ---- the frame's data ---- */
@@ -748,10 +613,9 @@ static void vis_spectrum(void)
             note_name(b, vis_note[t]);
         else
             str_cpy(b, "--", 4);
-        vtext(16, 16, 20, b, 380, OP_WHITE);
         {
             char tn[3] = {(char)('1' + t), 0, 0};
-            vtext(70, 24, 12, tn, 300, OP_TRK[t]);
+            vtext(16 + vtext(16, 16, 20, b, 380, OP_WHITE) + 4, 24, 12, tn, 300, OP_TRK[t]);
         }
         for (i = 0; i < 120u; i++) {
             int32_t m = 0, j;
@@ -825,9 +689,8 @@ static void vis_hexagon(void)
             op_disc(vs.bx[k], vs.by[k], PX(4) + (vs.flash[k] ? vs.flash[k] * 24 : 0), c);
         }
     /* the corners: the tempo; the tracks playing; the master */
-    vtext(16, 16, 22, "B", 380, OP_BLUE);
     fmt_int(b, song.g[G_BPM]);
-    vtext(36, 16, 22, b, 380, OP_WHITE);
+    vtext(16 + vtext(16, 16, 22, "B", 380, OP_BLUE) + 4, 16, 22, b, 380, OP_WHITE);
     {
         uint32_t n = 0;
         for (k = 0; k < 4u; k++)
@@ -837,7 +700,7 @@ static void vis_hexagon(void)
         op_circle(PX(214), PX(27), PX(10), 330, OP_TEAL);
         vtext_c(214, 21, 12, b, 300, n ? OP_GREEN : OP_GREY);
     }
-    vtext(178, 202, 22, "M", 380, OP_RED);
+    vtext_r(190, 202, 22, "M", 380, OP_RED);
     {
         int32_t m = vs.sm[4] * 26 / 1000;
         op_line(PX(198), PX(220), PX(226), PX(220), 330, OP_BLUE);
@@ -956,8 +819,8 @@ static void vis_transport(void)
     char b[12];
     uint32_t i, beat = song.playing ? clk_beat : 0u, six = song.playing ? beat % 4u * 4u + clk_pos * 4u / BEAT_U : 99u;
     fmt_int(b, song.g[G_BPM]);
-    vtext_sx(120 - vtext_w(92, 256 * 3 / 4, b) / 2, 70, 92, 256 * 3 / 4, b, 600, OP_LAV);
-    vtext_c(120, 176, 10, "BPM", 260, OP_GREY);
+    vtext_c(120, 92, 66, b, 600, OP_LAV);           /* (0.12: Inter, 66 px; it was 92) */
+    vtext_c(120, 172, 10, "BPM", 260, OP_GREY);
     fmt_int(b, (int32_t)(beat / 4u + 1u));
     i = str_len(b);
     b[i] = '.', b[i + 1u] = (char)('1' + beat % 4u), b[i + 2u] = 0;
@@ -1028,7 +891,7 @@ static void vis_tracks(void)
         uint32_t a = 512u + (uint32_t)(nd * 512 / 1000);
         char b[4];
         b[0] = (char)('1' + i), b[1] = 0;
-        vtext_c(cx, gy - 28, 30, b, 330, OP_DIM);   /* the number, faint, behind */
+        vtext_c(cx, gy - 28, 28, b, 330, OP_DIM);   /* the number, faint, behind */
         op_arc(PX(cx), PX(gy), PX(22), 512, 896, 300, OP_GREY);
         op_arc(PX(cx), PX(gy), PX(22), 896, 1024, 330, OP_RED);
         op_line(PX(cx), PX(gy - 26), PX(cx), PX(gy - 19), 300, OP_GREY);
@@ -1045,7 +908,7 @@ static void vis_tracks(void)
             vtext_c(cx + 17, gy + 28, 11, "R", 260, OP_GREY);
         }
         b[0] = (char)('0' + lv / 10), b[1] = (char)('0' + lv % 10), b[2] = 0;
-        vtext_sx(cx - vtext_w(66, 112, b) / 2, 126, 66, 112, b, 440, OP_TRK[i]);
+        vtext_c(cx, 146, 30, b, 440, OP_TRK[i]);
     }
 }
 

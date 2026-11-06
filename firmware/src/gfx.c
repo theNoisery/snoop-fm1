@@ -17,13 +17,18 @@ typedef struct {               /* proportional, see tools/gen_font.py */
     uint8_t h;
     uint8_t pad;               /* bitmap starts this many pixels left of the pen */
     uint8_t first, last;
-    uint8_t sh;                /* 1: the bitmaps are another font's, drawn at 2x (L = S at 2x, no copy) */
+    uint8_t sh;                /* 1: the bitmaps are another font's, drawn at 2x (L = S at 2x, no copy); SNOOP 0.12: 2 the
+                                * font shows capitals in lower case (Inter's labels, as the OP-1's) */
     const uint8_t *adv;        /* advance per glyph */
-    const uint8_t *bw;         /* bitmap width per glyph (starts FONT_PAD left of the pen) */
+    const uint8_t *bw;         /* bitmap width per glyph (starts FONT_PAD left of the pen); bits 2 / 3: 4 bytes a glyph,
+                                * its ink's box: x from the pen + pad, y from the line's top, width, height */
     const uint16_t *off;       /* byte offset of each glyph */
     const uint8_t *data;
     uint8_t bits;              /* SLOOP 2.6: 1 = 1 bit a pixel (a pixel font: glyph rows one after the other, high
-                                * bit first, each glyph from a whole byte); 0 = 2 pixels a byte, alpha 0..15 */
+                                * bit first, each glyph from a whole byte); 0 = 2 pixels a byte, alpha 0..15;
+                                * SNOOP 0.12 (Inter): the glyph cropped to its box, 2 = 2 pixels a byte (each row from a
+                                * whole byte), 3 = run-length coded nibbles (1..14 an alpha, 0 n / 15 n: n + 1 pixels of
+                                * 0 / 15, over the rows; tools/gen_font.py rle) */
 } felucca_font_t;
 #include "felucca_font.h"
 
@@ -33,6 +38,18 @@ static uint32_t cv_w, cv_h;
 static int32_t cv_oy;            /* y offset for graph drawing */
 
 #define RGB(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
+#define OP_BG RGB(0, 0, 0)                  /* (0.9.1: black, as the other screens: a grey looked faded on the FM-1) */
+#define OP_BLUE RGB(84, 120, 246)
+#define OP_GREEN RGB(22, 222, 140)
+#define OP_WHITE RGB(236, 236, 242)
+#define OP_RED RGB(246, 52, 84)
+#define OP_LAV RGB(184, 184, 236)
+#define OP_TEAL RGB(30, 98, 112)
+#define OP_GREY RGB(124, 124, 140)
+#define OP_DIM RGB(72, 72, 88)
+#define OP_DARK RGB(44, 44, 54)
+#define OP_MAROON RGB(140, 32, 56)
+#define OP_ORANGE RGB(255, 138, 40)          /* (SNOOP 0.12: the OP look's second colour, where the OP-1 has green) */
 static uint16_t pal_bg;                  /* SLOOP 2.7: the background, black unless a theme says (palette_set) */
 #define C_BLACK pal_bg                   /* the background (and dark text on a light tile) */
 static uint16_t pal_hi = 0xFFFFu;        /* the accent: white unless a theme says (palette_set) */
@@ -49,7 +66,14 @@ static const palette_t PALETTES[] = {
     {"CYAN", {RGB(0, 30, 50), RGB(0, 62, 96), RGB(16, 112, 160), RGB(56, 172, 222), RGB(140, 222, 255)}},
     {"RED", {RGB(52, 8, 8), RGB(100, 18, 14), RGB(170, 36, 26), RGB(226, 64, 48), RGB(255, 112, 92)}},
     {"MONO", {RGB(40, 40, 40), RGB(80, 80, 80), RGB(130, 130, 130), RGB(186, 186, 186), RGB(226, 226, 226)}},
+    /* SNOOP 0.12: the OP look (as the visualiser's, after the OP-1): greys, the tracks blue, orange, white, red, Inter */
+    {"OP", {RGB(44, 44, 54), RGB(72, 72, 88), RGB(124, 124, 140), RGB(190, 190, 202), RGB(236, 236, 242)}},
 };
+#define PAL_OP 5u
+/* SNOOP 0.12: the screens' fonts, as the palette says: Terminus (S, L), or Inter in the OP look (text IS, as given;
+ * titles and large values IB; F_LB the labels, Inter's in lower case) */
+static const felucca_font_t *F_S = &FONT_S, *F_L = &FONT_L, *F_LB = &FONT_S;
+static uint8_t op_look;                          /* the OP look is on (palette_set) */
 #define NPALETTES (sizeof(PALETTES) / sizeof(PALETTES[0]))
 static uint16_t pal[5];
 #define C_LINE pal[0]                /* 1 rules, separators */
@@ -164,8 +188,13 @@ static uint16_t te_gray(uint32_t c)
 
 static void palette_set(uint32_t i)              /* built-in palette i, or the theme when it is chosen (2.7) */
 {
+    static const uint16_t OP_TRK_COL[4] = {OP_BLUE, OP_ORANGE, OP_WHITE, OP_RED};
     uint32_t k;
     int cu = theme_shown();
+    op_look = (uint8_t)(!cu && i % NPALETTES == PAL_OP);
+    F_S = op_look ? &FONT_ISC : &FONT_S;
+    F_L = op_look ? &FONT_IB : &FONT_L;
+    F_LB = op_look ? &FONT_IS : &FONT_S;
     for (k = 0; k < 5u; k++)
         pal[k] = cu ? theme.c[k] : PALETTES[i % NPALETTES].c[k];
     pal_bg = cu ? theme.bg : 0u;
@@ -173,9 +202,10 @@ static void palette_set(uint32_t i)              /* built-in palette i, or the t
     for (k = 0; k < 4u; k++)
         te_g[k] = te_gray(TE_G_DEF[k]);
     for (k = 0; k < 4u; k++) {
-        TE_COL[k] = cu ? theme.trk[k] : TE_COL_DEF[k];
-        TE_MID[k] = cu ? rgb565_scale(theme.trk[k], 2u, 3u) : TE_MID_DEF[k];
-        TE_DIM[k] = cu ? rgb565_scale(theme.trk[k], 1u, 3u) : TE_DIM_DEF[k];
+        uint16_t tc = cu ? theme.trk[k] : OP_TRK_COL[k];
+        TE_COL[k] = cu || op_look ? tc : TE_COL_DEF[k];
+        TE_MID[k] = cu || op_look ? rgb565_scale(tc, 2u, 3u) : TE_MID_DEF[k];
+        TE_DIM[k] = cu || op_look ? rgb565_scale(tc, 1u, 3u) : TE_DIM_DEF[k];
     }
 }
 
@@ -254,6 +284,12 @@ static void cv_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c)
  * s and y diaeresis, which have none); anything missing (and C1 controls) draws as '?' */
 static uint32_t glyph(const felucca_font_t *f, uint32_t ch)
 {
+    /* (SNOOP 0.12: Inter is stored in ASCII; a Latin-1 letter draws as its letter without the accent) */
+    static const char LAT1[65] = "AAAAAAACEEEEIIIIDNOOOOO*OUUUUYPsaaaaaaaceeeeiiiidnooooo/ouuuuypy";
+    if (f->bits >= 2u && ch >= 0xC0u && ch <= 0xFFu)
+        ch = (uint8_t)LAT1[ch - 0xC0u];
+    if ((f->sh & 2u) && ch >= 'A' && ch <= 'Z')
+        ch += 32u;
     if (f->last != 126u && ((ch >= 'a' && ch <= 'z') || (ch >= 0xE0u && ch <= 0xFEu && ch != 0xF7u)))
         ch -= 32u;                                      /* (SNOOP 0.12: FONT_N, 32..126, has its lower case) */
     if (ch < f->first || ch > f->last || (ch >= 127u && ch < 160u))
@@ -271,8 +307,41 @@ static int32_t cv_text(int32_t x, int32_t y, const felucca_font_t *f, const char
     for (; *s; s++) {
         uint32_t gi = glyph(f, (uint8_t)*s), gx, gy, w, bpr;
         const uint8_t *gd;
-        w = f->bw[gi];
         gd = f->data + f->off[gi];
+        if (f->bits >= 2u) {                           /* (SNOOP 0.12) a cropped glyph: its box only */
+            const uint8_t *bx = f->bw + gi * 4u;
+            int32_t x0 = x - f->pad + bx[0], y0 = y + bx[1];
+            uint32_t gw = bx[2], n = gw * bx[3], i = 0, k = 0;
+            if (f->bits == 2u) {
+                bpr = (gw + 1u) / 2u;
+                for (gy = 0; gy < bx[3]; gy++)
+                    for (gx = 0; gx < gw; gx++) {
+                        uint32_t v = gd[gy * bpr + gx / 2u];
+                        v = (gx & 1u) ? (v & 15u) : (v >> 4);
+                        if (v)
+                            cv_pset(x0 + (int32_t)gx, y0 + (int32_t)gy, ramp[v]);
+                    }
+            } else {
+                uint32_t cx = 0, cy = 0;                /* (the pixel i's column and row) */
+                while (i < n) {
+                    uint32_t v = (gd[k >> 1] >> ((~k & 1u) << 2)) & 15u, run = 1;
+                    k++;
+                    if (v == 0u || v == 15u) {
+                        run = ((gd[k >> 1] >> ((~k & 1u) << 2)) & 15u) + 1u;
+                        k++;
+                    }
+                    for (i += run; run; run--) {
+                        if (v)
+                            cv_pset(x0 + (int32_t)cx, y0 + (int32_t)cy, ramp[v]);
+                        if (++cx == gw)
+                            cx = 0, cy++;
+                    }
+                }
+            }
+            x += f->adv[gi];
+            continue;
+        }
+        w = f->bw[gi];
         if (f->bits == 1u) {                           /* on / off pixels: full colour where a bit is set */
             uint32_t sw = w >> f->sh;
             for (gy = 0; gy < f->h; gy++)

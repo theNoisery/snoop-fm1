@@ -682,14 +682,14 @@ UI_SMALL static void layer_title(const char *name, const char *sub, uint16_t col
         return;
     *cache = sig;
     cv_begin(240, 40, C_BLACK);
-    cv_text(4, 2, &FONT_L, name, col);
-    cv_text(4 + text_w(&FONT_L, name) + 10, 18, &FONT_S, ui.msg_t ? ui.msg : sub, ui.msg_t ? C_WHITE : TE_G3);
+    cv_text(4, 2, F_L, name, col);
+    cv_text(4 + text_w(F_L, name) + 10, 18, F_S, ui.msg_t ? ui.msg : sub, ui.msg_t ? C_WHITE : TE_G3);
     if (locked) {                                         /* locked open (HOME): any button lets it go */
-        int32_t w = (int32_t)text_w(&FONT_S, "LOCK") + 8;
+        int32_t w = (int32_t)text_w(F_S, "LOCK") + 8;
         cv_rect(236 - w, 4, w, 15, C_WHITE);
-        cv_text(240 - w, 4, &FONT_S, "LOCK", C_BLACK);
+        cv_text(240 - w, 4, F_S, "LOCK", C_BLACK);
     } else if (hdr_r[0]) {                                /* (2.7.2) a right-aligned readout (FX: the fade), like a knob's */
-        cv_text(236 - text_w(&FONT_S, hdr_r), 4, &FONT_S, hdr_r, TE_G3);
+        cv_text(236 - text_w(F_S, hdr_r), 4, F_S, hdr_r, TE_G3);
     }
     cv_rect(0, 38, 240, 1, TE_G1);
     cv_blit(0, 0);
@@ -1087,7 +1087,7 @@ UI_SMALL static void hold_screen_draw(void)
         return;
     cache = sig;
     cv_begin(240, 124, C_BLACK);
-    cv_text(120 - text_w(&FONT_L, ui.hold_kind == 1u ? "clear" : "save") / 2, 4, &FONT_L,
+    cv_text(120 - text_w(F_L, ui.hold_kind == 1u ? "clear" : "save") / 2, 4, F_L,
             ui.hold_kind == 1u ? "clear" : "save", ui.hold_kind == 1u ? TE_RED : C_WHITE);
     {   /* the ring: 36 px, 7 thick, filling clockwise from the top */
         int32_t a, rr, end = ratio * 1024 / 1000;

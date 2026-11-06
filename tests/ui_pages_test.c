@@ -185,8 +185,9 @@ int main(int argc, char **argv)
     }
     panel = PANEL_DEFAULT;
     layers_init();
-    settings.palette = 4;
-    palette_set(4);
+    settings.palette = getenv("UI_PALETTE") ? (uint32_t)atoi(getenv("UI_PALETTE")) : 4u;   /* (UI_PALETTE=5: the pages
+                                                                                    * in the OP look, to look at) */
+    palette_set(settings.palette);
     host_tracks_init();
     for (i = 0; i < NSYN; i++) { set_engine_of(&trk[i], TRK_DEF[i][0]); apply_preset_to(&trk[i], TRK_DEF[i][1]); trk[i].engine = trk[i].eng_req; }
     TDRUM->p[P_E0] = DRUM_DEFAULT_KIT;
@@ -853,13 +854,16 @@ int main(int argc, char **argv)
             check(ok, "theme (2.7): checked (CRC, the strongest step and the accent standing out from the background, a "
                       "printable name); a first-beta THM1 taken with an accent");
             ui.menu = 1; ui.menu_sel = MI_COLOR; ui.force = 1; frame();
-            settings.palette = 4; theme_on = 0; palette_set(4);
-            encs[panel.enc[EN_K1]] = 1; frame();      /* no theme: MONO -> GREEN, as ever */
-            ok = settings.palette == 0u && !theme_on;
+            settings.palette = PAL_OP; theme_on = 0; palette_set(PAL_OP);
+            encs[panel.enc[EN_K1]] = 1; frame();      /* no theme: the last (SNOOP 0.12: OP) -> GREEN, as ever */
+            ok = settings.palette == 0u && !theme_on && !op_look && F_S == &FONT_S;
             settings.palette = 4; palette_set(4);
             theme = th; theme_valid = 1;
-            encs[panel.enc[EN_K1]] = 1; frame();      /* MONO -> SUNSET */
-            ok &= theme_on && settings.palette == 4u && pal[0] == th.c[0] && pal[4] == th.c[4] && C_BLACK == th.bg &&
+            encs[panel.enc[EN_K1]] = 1; frame();      /* MONO -> OP (SNOOP 0.12: the OP look) */
+            ok &= !theme_on && settings.palette == PAL_OP && op_look && F_S == &FONT_ISC && TE_COL[1] == OP_ORANGE;
+            ui.force = 1; frame(); ppm("menu-op");
+            encs[panel.enc[EN_K1]] = 1; frame();      /* OP -> SUNSET */
+            ok &= theme_on && settings.palette == PAL_OP && !op_look && F_S == &FONT_S && pal[0] == th.c[0] && pal[4] == th.c[4] && C_BLACK == th.bg &&
                   TE_COL[0] == th.trk[0] && TE_COL[3] == th.trk[3] && TE_MID[1] == rgb565_scale(th.trk[1], 2, 3) &&
                   (lights_word() >> 30 & 1u) && !strcmp(mi_value(MI_COLOR, &(uint16_t){0}), "SUNSET") && C_WHITE == th.hi;
             ui.force = 1; frame(); ppm("menu-theme");
