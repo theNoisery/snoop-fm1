@@ -34,7 +34,8 @@ PAD = 2
 # (the others empty); lower: the font folds capitals to lower case (the labels, as the OP-1's); cap: the capitals' top
 # this far under the line's top, as Terminus' (S 3, L 6: Inter drops in where it was; ink above it, cut), None: the
 # line from the highest ink
-INTER = [("IS", "Inter-Medium-latin1.otf", 14, 32, 126, None, False, True, 3),     # labels, lists, units
+INTER = [("IX", "Inter-Medium-latin1.otf", 11, 32, 95, None, False, False, 2),     # small print (ABOUT): capitals
+         ("IS", "Inter-Medium-latin1.otf", 14, 32, 126, None, False, True, 3),     # labels, lists, units
          ("IV", "Inter-SemiBold-latin1.otf", 16, 32, 126, None, False, False, 3),  # values, names
          ("IB", "Inter-Bold-latin1.otf", 30, 32, 95, None, True, False, 6),        # titles, large values: capitals
          ("IM", "Inter-Bold-latin1.otf", 40, 37, 57, "%-.0123456789", True, False, None),   # the visualiser's digits:

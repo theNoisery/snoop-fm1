@@ -55,6 +55,18 @@ UI_SMALL static void te_disc(int32_t cx, int32_t cy, int32_t r, uint16_t c)     
             if (x * x + y * y <= r * r + r)
                 cv_pset(cx + x, cy + y, c);
 }
+/* (SNOOP 0.12) a rectangle with round corners (radius r), anti-aliased; ring: only its edge, ring px wide */
+UI_SMALL static void te_rrect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, int32_t ring, uint16_t c)
+{
+    cv_rect(x + r, y, w - 2 * r, h, c);
+    cv_rect(x, y + r, w, h - 2 * r, c);
+    op_round((x + r) * 256, (y + r) * 256, r * 256, 0, c);
+    op_round((x + w - r) * 256, (y + r) * 256, r * 256, 0, c);
+    op_round((x + r) * 256, (y + h - r) * 256, r * 256, 0, c);
+    op_round((x + w - r) * 256, (y + h - r) * 256, r * 256, 0, c);
+    if (ring)
+        te_rrect(x + ring, y + ring, w - 2 * ring, h - 2 * ring, r > ring ? r - ring : 1, 0, C_BLACK);
+}
 /* a dial: a 270-degree ring (lit up to the value), a pointer; ratio 0..1000, -1 = a plain ring */
 UI_SMALL static void te_dial(int32_t cx, int32_t cy, int32_t r, int32_t ratio, uint16_t c, uint16_t dim)
 {
@@ -110,25 +122,30 @@ UI_SMALL static void te_dials(int32_t y0, const char *const lab[4], const char *
     if (!ui.force && sig == *cache)
         return;
     *cache = sig;
-    cv_begin(240, ui.msg_t ? 240u - (uint32_t)y0 : 40u, C_BLACK);
+    cv_begin(240, 240u - (uint32_t)y0, C_BLACK);
     if (ui.msg_t) {                                     /* a message: a white bar */
         cv_rect(0, 10, 240, 32, C_WHITE);
         cv_text((240 - text_w(F_S, ui.msg)) / 2, 18, F_S, ui.msg, C_BLACK);
         cv_blit(0, (uint32_t)y0);
         return;
     }
-    for (k = 0; k < 4u; k++) {
-        int32_t cx = 30 + 60 * (int32_t)k;
+    for (k = 0; k < 4u; k++) {                          /* (SNOOP 0.12) a column a knob: the label, the value (white
+                                                         * while turned), a thin line lit in the knob's colour up to
+                                                         * a white dot */
+        int32_t x = 4 + 60 * (int32_t)k, gy = 48 * 256 + 128, xb;
         if (!lab[k][0])
             continue;
-        te_dial(cx, 12, 11, ratio[k], TE_COL[k], TE_DIM[k]);
-        te_text_c(cx, 24, lab[k], TE_G3);
+        cv_text(x, 0, F_S, lab[k], TE_G3);
+        cv_text(x, 17, &FONT_IV, val[k], ui.hot_t && ui.hot_col == k ? C_WHITE : TE_G4);
+        if (ratio[k] < 0)
+            continue;
+        xb = (x + 2) * 256 + clamp(ratio[k], 0, 1000) * 48 * 256 / 1000;
+        op_line((x + 2) * 256, gy, (x + 50) * 256, gy, 256, TE_G1);
+        if (xb > (x + 2) * 256 + 128)
+            op_line((x + 2) * 256, gy, xb, gy, 600, TE_COL[k]);
+        op_round(xb, gy, 3 * 256, 0, C_WHITE);
     }
     cv_blit(0, (uint32_t)y0);
-    cv_begin(240, 16, C_BLACK);                         /* the values: white while turned */
-    for (k = 0; k < 4u; k++)
-        te_text_c(30 + 60 * (int32_t)k, 0, val[k], ui.hot_t && ui.hot_col == k ? C_WHITE : TE_G4);
-    cv_blit(0, (uint32_t)y0 + 40u);
 }
 
 UI_SMALL static void studio_open(uint32_t scope)
@@ -259,10 +276,10 @@ UI_SMALL static void studio_tracks_draw(void)
         if (!ui.force && h == rows[i]) continue;
         rows[i] = h;
         cv_begin(240, 36, C_BLACK);
-        cv_rect(2, 3, 26, 30, selected ? col : dim);   /* the track tile */
+        te_rrect(2, 4, 26, 28, 5, selected ? 0 : 2, col);   /* the track tile: lit when picked, else ringed (0.12) */
         {
             char n[2] = {(char)('1' + i), 0};
-            cv_text(11, 10, F_S, n, selected ? C_BLACK : col);
+            cv_text(15 - text_w(&FONT_IV, n) / 2, 8, &FONT_IV, n, selected ? C_BLACK : col);
         }
         cv_text(34, 1, F_S, b, selected ? C_WHITE : TE_G4);
         if (34 + text_w(F_S, b) + 6 + text_w(F_S, e) < 196)
@@ -289,16 +306,15 @@ UI_SMALL static void studio_tracks_draw(void)
                     for (k = a; k < z; k++) if (trk_step_on(t, k)) on = 2;
                 }
             }
-            cv_rect(34 + (int32_t)j * 10, 21, 8, 9,
-                    !on ? C_BLACK : on == 2u ? (silent ? TE_G3 : selected ? col : dim) : TE_G1);
-            if (on == 2u && !selected && !silent)
-                cv_rect(34 + (int32_t)j * 10, 21, 8, 2, col);
+            if (on)                                     /* (0.12: round corners) */
+                te_rrect(34 + (int32_t)j * 10, 21, 8, 9, 2, 0,
+                         on == 2u ? (silent ? TE_G3 : selected ? col : TE_MID[i]) : TE_G1);
             if (song.playing && p == pos)
                 cv_rect(34 + (int32_t)j * 10, 31, 8, 2, C_WHITE);
         }
-        cv_rect(198, 23, 38, 5, TE_G1);                /* the level */
-        if (!silent)
-            cv_rect(198, 23, (int32_t)level * 38 / 127, 5, selected ? col : TE_G3);
+        te_rrect(198, 23, 38, 5, 2, 0, TE_G1);        /* the level (0.12: round ends) */
+        if (!silent && level * 38u / 127u >= 4u)
+            te_rrect(198, 23, (int32_t)level * 38 / 127, 5, 2, 0, selected ? col : TE_G3);
         cv_blit(0, 40 + i * 36);
     }
     {   /* KNOB 1 swing (the global groove), 2 level, 3 steps, 4 pan of the selected track */
