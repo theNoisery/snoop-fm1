@@ -50,7 +50,6 @@ UI_SMALL static int32_t batt_shown(void)
 UI_SMALL static void draw_head(void)
 {
     char b[16];
-    uint32_t i;
     int32_t x;
     uint32_t rec = (song.rec >> song.sel) & 1u ? 2u : song.rec != 0u;   /* 2 the selected track armed, 1 another */
     uint32_t sig = (uint32_t)song.playing * 3u + rec * 5u + (uint32_t)(song.octave + 8) * 11u + song.sel * 13131u +
@@ -65,19 +64,19 @@ UI_SMALL static void draw_head(void)
         cv_blit(0, Y_HEAD);
         return;
     }
-    if (song.playing) {                               /* > play, square stop */
-        for (i = 0; i < 5u; i++)
-            cv_rect(4 + (int32_t)i * 2, 4 + (int32_t)i, 2, 10 - 2 * (int32_t)i, C_WHITE);
-    } else {
-        cv_rect(4, 5, 8, 8, C_HI);
-    }
+    play_icon(4, 4, 11, song.playing, song.playing ? C_WHITE : C_HI);   /* > play, square stop: outlines (0.12) */
     if (rec)                                          /* recording armed: white = this track, gray = another */
         te_disc(21, 9, 4, rec == 2u ? TE_RED : C_GRAY);
     fmt_int(b, song.g[G_BPM]);
     x = 32;
-    if (FELUCCA_ICONS) {                              /* metronome, then the BPM */
-        cv_icon(x, 2, ICON_TEMPO, C_GRAY);
-        x += 14;
+    {                                                 /* a metronome (0.12: thin lines), then the BPM */
+        op_line(x * 256 + 640, 3 * 256, x * 256 + 1664, 3 * 256, 256, C_GRAY);              /* its top */
+        op_line(x * 256 + 640, 3 * 256, x * 256 + 128, 16 * 256, 256, C_GRAY);             /* its sides */
+        op_line(x * 256 + 1664, 3 * 256, x * 256 + 2176, 16 * 256, 256, C_GRAY);
+        op_line(x * 256 + 128, 16 * 256, x * 256 + 2176, 16 * 256, 256, C_GRAY);           /* its foot */
+        op_line(x * 256 + 1152, 13 * 256, x * 256 + 2560, 4 * 256, 256, C_HI);             /* the pendulum */
+        op_round(x * 256 + 1792, 8 * 256 + 128, 300, 0, C_HI);
+        x += 16;
     }
     x = cv_text(x, 1, F_S, b, ui.bpm_t ? C_WHITE : C_HI);   /* white while SELECT turns it */
     if (mlu.on) {                                     /* MIDI LEARN on (2.6, GLO + F#3): in the octave's place */
@@ -88,18 +87,9 @@ UI_SMALL static void draw_head(void)
         cv_text(x + 12, 1, F_S, "OCT", C_GRAY);
         cv_text(x + 40, 1, F_S, b, C_HI);
     }
-    if (FELUCCA_ICONS) {                              /* the selected track: tape + number */
-        cv_icon(156, 2, ICON_TAPE, C_GRAY);
-        b[0] = (char)('1' + song.sel);
-        b[1] = 0;
-        cv_rect(168, 2, 12, 16, TE_COL[song.sel & 3u]);
-        cv_text(170, 1, F_S, b, C_BLACK);
-    } else {
-        b[0] = 'T';
-        b[1] = (char)('1' + song.sel);
-        b[2] = 0;
-        cv_text(158, 1, F_S, b, C_HI);
-    }
+    b[0] = (char)('1' + song.sel);                    /* the selected track: its number in its colour (0.12) */
+    b[1] = 0;
+    cv_text(166, 0, &FONT_IV, b, TE_COL[song.sel & 3u]);
     {   /* battery, 3 bars; USB when a host is there */
         int32_t lvl = batt_shown(), k;
         int32_t bx = 236 - 19;                          /* right edge (the CPU figure is in the console) */
@@ -110,8 +100,8 @@ UI_SMALL static void draw_head(void)
         cv_rect(bx + 17, 6, 2, 5, C_GRAY);
         for (k = 0; k < lvl; k++)
             cv_rect(bx + 2 + k * 5, 6, 3, 5, lvl == 1 && batt_level() <= 1 ? C_WHITE : C_HI);
-        if (usb.config && !usb.suspended)
-            cv_text(bx - 28, 1, F_S, "USB", C_DIM);
+        if (usb.config && !usb.suspended)               /* (0.12: Inter's USB is wider: clear of the battery) */
+            cv_text(bx - 8 - text_w(F_S, "USB"), 1, F_S, "USB", C_DIM);
     }
     cv_blit(0, Y_HEAD);
 }

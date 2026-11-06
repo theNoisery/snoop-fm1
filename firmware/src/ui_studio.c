@@ -67,14 +67,21 @@ UI_SMALL static void te_rrect(int32_t x, int32_t y, int32_t w, int32_t h, int32_
     if (ring)
         te_rrect(x + ring, y + ring, w - 2 * ring, h - 2 * ring, r > ring ? r - ring : 1, 0, C_BLACK);
 }
-UI_SMALL static void te_play_icon(int32_t x, int32_t y, int playing)
+/* play / stop, as outlines (SNOOP 0.12): a triangle while playing, a square stopped; s its size (px), the top left at
+ * x, y */
+UI_SMALL static void play_icon(int32_t x, int32_t y, int32_t s, int playing, uint16_t c)
 {
-    int32_t i;
-    if (playing)
-        for (i = 0; i < 12; i++)
-            cv_rect(x + i, y + i / 2, 1, 14 - i, C_WHITE);   /* a triangle */
-    else
-        cv_rect(x, y + 1, 12, 12, TE_G3);
+    int32_t x0 = x * 256 + 128, y0 = y * 256 + 128, e = (s - 1) * 256;
+    if (playing) {
+        op_line(x0, y0, x0, y0 + e, 300, c);
+        op_line(x0, y0, x0 + e * 7 / 8, y0 + e / 2, 300, c);
+        op_line(x0, y0 + e, x0 + e * 7 / 8, y0 + e / 2, 300, c);
+    } else {
+        op_line(x0, y0, x0 + e, y0, 300, c);
+        op_line(x0, y0 + e, x0 + e, y0 + e, 300, c);
+        op_line(x0, y0, x0, y0 + e, 300, c);
+        op_line(x0 + e, y0, x0 + e, y0 + e, 300, c);
+    }
 }
 UI_SMALL static uint32_t studio_hash(uint32_t h, const char *p)
 { while (*p) h = h * 31u + (uint8_t)*p++; return h; }
@@ -196,7 +203,7 @@ UI_SMALL static void te_header(const char *title, uint16_t tc, uint32_t *cache, 
     fmt_int(b, song.g[G_BPM]);
     cv_text(4, 4, F_L, b, ui.bpm_t ? C_WHITE : TE_G4);
     cv_text(4 + text_w(F_L, b) + 4, 20, F_S, "bpm", TE_G3);
-    te_play_icon(104, 6, (int)playing);
+    play_icon(104, 6, 13, (int)playing, playing ? C_WHITE : TE_G3);
     if (playing) {                                     /* bar.beat in the selected track's loop */
         loop_pos(TSEL, b);
         cv_text(122, 5, F_S, b, C_WHITE);
@@ -213,11 +220,10 @@ UI_SMALL static void te_header(const char *title, uint16_t tc, uint32_t *cache, 
     } else {
         int32_t tx = 240 - text_w(F_S, title) - 4;
         cv_text(tx, 5, F_S, title, tc);
-        if (sect >= 0) {                               /* (2.7.2) which section (A..D) is playing, SONG-layer colours */
+        if (sect >= 0) {                               /* (2.7.2) which section (A..D) is playing, SONG-layer colours;
+                                                         * 0.12: the letter alone, in its colour */
             char sb[2] = {(char)('A' + (sect & 3)), 0};
-            int32_t bw = text_w(F_S, sb) + 8, bx = tx - bw - 6;
-            cv_rect(bx, 3, bw, 14, playing ? TE_COL[sect & 3] : TE_DIM[sect & 3]);
-            cv_text(bx + 4, 5, F_S, sb, C_BLACK);
+            cv_text(tx - text_w(&FONT_IV, sb) - 8, 4, &FONT_IV, sb, playing ? TE_COL[sect & 3] : TE_MID[sect & 3]);
         }
         if (song.solo)
             cv_text(236 - text_w(F_S, "solo"), 22, F_S, "solo", C_WHITE);
@@ -246,7 +252,7 @@ UI_SMALL static void studio_tracks_draw(void)
         uint32_t level = is_drum(t) ? song.g[G_DRLVL] : t->p[P_LEVEL];
         uint32_t silent = trk_silent(t) || !level, pos = t->seq_idx % len, rec = (song.rec >> i) & 1u;
         uint32_t solo = (song.solo >> i) & 1u, bank = song.playing ? pos / 16u : 0u, h;
-        uint16_t col = TE_COL[i], dim = TE_DIM[i];
+        uint16_t col = TE_COL[i];
         if (is_drum(t)) {
             str_cpy(b, DRUM_KIT_NAMES[drum_kit()], sizeof b);
             te_lower(e, "drums", sizeof e);
