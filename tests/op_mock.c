@@ -6,11 +6,14 @@
 #include "ui_pages_test.c"
 
 #define OPW(w) ((int32_t)((w) * 256))                   /* a width in px, 1/256 */
-static uint16_t PC[4] = {OP_BLUE, OP_GREEN, OP_WHITE, OP_RED};   /* the scheme: track i's colour, knob k's colour */
+static uint16_t PC[4] = {OP_BLUE, RGB(255, 138, 40), OP_WHITE, OP_RED};   /* (orange for the OP-1's green)   /* the scheme: track i's colour, knob k's colour */
 #define KCOL PC
 #define REC_RED RGB(246, 52, 84)
 
+static const felucca_font_t *BIG = &FONT_N2, *VAL = &FONT_N;   /* the pixel fonts of titles / values (a variant each) */
 static void ntext(int32_t x, int32_t y, const char *s, uint16_t c) { cv_text(x, y, &FONT_N, s, c); }
+static int32_t big(int32_t x, int32_t y, const char *s, uint16_t c) { return cv_text(x, y, BIG, s, c) - x; }
+static int32_t val(int32_t x, int32_t y, const char *s, uint16_t c) { return cv_text(x, y, VAL, s, c) - x; }
 static int32_t ntext_w(const char *s) { return text_w(&FONT_N, s); }
 static void ntext_r(int32_t rx, int32_t y, const char *s, uint16_t c) { ntext(rx - ntext_w(s), y, s, c); }
 static void ntext_c(int32_t cx, int32_t y, const char *s, uint16_t c) { ntext(cx - ntext_w(s) / 2, y, s, c); }
@@ -60,20 +63,20 @@ static void op_badge(int32_t x, int32_t y, uint32_t i, int sel)
     uint16_t c = PC[i];
     if (sel) {
         op_rrect(x, y, 20, 20, 3, 0, c, 1);
-        vtext_c(x + 10, y + 4, 12, b, OPW(1.5), OP_BG);
+        cv_text(x + 6, y + 2, &FONT_S, b, OP_BG);
     } else {
         op_rrect(x, y, 20, 20, 3, OPW(1.2), c, 0);
-        vtext_c(x + 10, y + 4, 12, b, OPW(1.3), c);
+        cv_text(x + 6, y + 2, &FONT_S, b, c);
     }
 }
 /* the top bar of a page: its title (thin, large), the track and the tempo */
 static void op_top(const char *title, uint32_t trk_i)
 {
     char b[8];
-    vtext(10, 9, 15, title, OPW(1.5), OP_WHITE);
+    big(8, 0, title, OP_WHITE);
     op_badge(214, 6, trk_i, 1);
     fmt_int(b, song.g[G_BPM]);
-    vtext_r(204, 10, 12, b, OPW(1.3), OP_LAV);
+    ntext_r(206, 8, b, OP_GREY);
     op_line(PX(10), PX(32), PX(230), PX(32), OPW(1), OP_DARK);
 }
 /* the bottom line: the sound, the page */
@@ -86,13 +89,13 @@ static void op_foot(uint32_t trk_i, const char *page)
 }
 /* four knobs, a column each (58 px): the label (small, grey), the value (thin, large) and its unit, and under them a
  * thin bar in the knob's colour (the OP-1's four: blue, green, white, red) with a dot where it stands */
-static void op_knob1(int32_t x, int32_t y, const char *lab, const char *val, const char *unit, int32_t rat, uint16_t c)
+static void op_knob1(int32_t x, int32_t y, const char *lab, const char *value, const char *unit, int32_t rat, uint16_t c)
 {
     int32_t w, xb = x + 2 + 50 * clamp(rat, 0, 1000) / 1000;
     ntext(x + 1, y, lab, OP_GREY);
-    w = vtext(x + 2, y + 18, 14, val, OPW(1.4), OP_WHITE);
+    w = val(x + 1, y + 17, value, OP_WHITE);
     if (unit[0] && w + 2 + ntext_w(unit) <= 56)
-        ntext(x + 4 + w, y + 17, unit, OP_GREY);
+        ntext(x + 3 + w, y + 17, unit, OP_GREY);
     op_line(PX(x + 2), PX(y + 38), PX(x + 52), PX(y + 38), OPW(1.2), OP_DARK);
     if (xb > x + 2)
         op_line(PX(x + 2), PX(y + 38), PX(xb), PX(y + 38), OPW(2.2), c);
@@ -114,13 +117,13 @@ static void scr_tracks(void)
     uint32_t i, s;
     fmt_int(b, song.g[G_BPM]);
     {
-        int32_t w = vtext(10, 6, 24, b, OPW(1.8), OP_WHITE);
-        ntext(14 + w, 13, "bpm", OP_GREY);
+        int32_t w = big(8, 0, b, OP_WHITE);
+        ntext(12 + w, 12, "bpm", OP_GREY);
     }
     op_line(PX(150), PX(10), PX(150), PX(24), OPW(1.6), PC[1]);   /* playing */
     op_line(PX(150), PX(10), PX(162), PX(17), OPW(1.6), PC[1]);
     op_line(PX(162), PX(17), PX(150), PX(24), OPW(1.6), PC[1]);
-    vtext(170, 10, 14, "1.1", OPW(1.4), OP_WHITE);
+    val(170, 9, "1.1", OP_WHITE);
     op_disc(PX(222), PX(17), PX(6), REC_RED);
     for (i = 0; i < NTRK; i++) {
         int32_t y = 38 + (int32_t)i * 38, len = trk[i].p[P_SLEN] > 0 ? trk[i].p[P_SLEN] : 16, at = (int32_t)(trk[i].seq_idx % (uint32_t)len);
@@ -270,8 +273,10 @@ static void scr_drums(void)
     char b[16];
     uint32_t r, s, at = TDRUM->seq_idx % 16u;
     str_cpy(b, DRUM_KIT_NAMES[drum_kit()], sizeof b);
-    vtext(10, 8, 20, b, OPW(1.6), OP_WHITE);
-    ntext(14 + vtext_w(20, 256, b), 13, "kit", OP_GREY);
+    {
+        int32_t w = big(8, 2, b, OP_WHITE);
+        ntext(12 + w, 14, "kit", OP_GREY);
+    }
     op_badge(214, 6, 3, 1);
     op_line(PX(10), PX(36), PX(230), PX(36), OPW(1), OP_DARK);
     for (r = 0; r < 8u; r++) {
@@ -303,7 +308,7 @@ static void scr_roll(void)
     static const char *const P[16] = {"kick", "kick2", "snare", "clap", "hat", "open", "pedal", "rim",
                                       "snr2", "tom l", "tom h", "crash", "ride", "shake", "conga", "bell"};
     uint32_t i;
-    vtext(10, 8, 20, "ROLL", OPW(1.7), PC[3]);
+    big(8, 2, "ROLL", PC[3]);
     ntext(80, 13, "+ key: roll", OP_GREY);
     op_line(PX(10), PX(36), PX(230), PX(36), OPW(1), OP_DARK);
     for (i = 0; i < 16u; i++) {
@@ -364,26 +369,20 @@ int main(int argc, char **argv)
     song.sel = 1;
     go_home(); frames(4);
     transport_req = 1; frames(37);
-    {   /* the schemes, on black: tracks / knobs 1..4 */
-        static const struct { const char *n; uint16_t c[4]; } SCH[] = {
-            {"op1", {RGB(84, 120, 246), RGB(22, 222, 140), RGB(236, 236, 242), RGB(246, 52, 84)}},
-            {"ocean", {RGB(80, 124, 255), RGB(60, 206, 232), RGB(196, 182, 255), RGB(255, 138, 92)}},
-            {"sunset", {RGB(255, 132, 56), RGB(255, 200, 70), RGB(255, 92, 140), RGB(166, 120, 255)}},
-            {"synthwave", {RGB(176, 106, 255), RGB(255, 78, 174), RGB(62, 216, 240), RGB(255, 210, 74)}},
-            {"ice", {RGB(236, 236, 242), RGB(150, 190, 255), RGB(110, 136, 255), RGB(255, 122, 46)}},
-        };
+    {   /* the two pixel variants: regular (N at 2x, values N) and bold (SLOOP's L, values S) */
+        static const char *const VN[2] = {"reg", "bold"};
         uint32_t q;
         char nm[40];
-        for (q = 0; q < sizeof SCH / sizeof SCH[0]; q++) {
-            memcpy(PC, SCH[q].c, sizeof PC);
+        for (q = 0; q < 2u; q++) {
+            BIG = q ? &FONT_L : &FONT_N2, VAL = q ? &FONT_S : &FONT_N;
             song.rec = 1, song.sel = 1;
-            snprintf(nm, sizeof nm, "sch-%s-tracks", SCH[q].n); shot(nm, scr_tracks);
+            snprintf(nm, sizeof nm, "px-%s-tracks", VN[q]); shot(nm, scr_tracks);
             song.rec = 0, song.sel = 0;
-            snprintf(nm, sizeof nm, "sch-%s-env", SCH[q].n); shot(nm, scr_env);
+            snprintf(nm, sizeof nm, "px-%s-env", VN[q]); shot(nm, scr_env);
             song.sel = 3;
-            snprintf(nm, sizeof nm, "sch-%s-drums", SCH[q].n); shot(nm, scr_drums);
+            snprintf(nm, sizeof nm, "px-%s-drums", VN[q]); shot(nm, scr_drums);
         }
-        memcpy(PC, SCH[0].c, sizeof PC);
+        BIG = &FONT_N2, VAL = &FONT_N;
     }
     song.sel = 1;
     song.rec = 1;
