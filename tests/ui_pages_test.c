@@ -856,14 +856,14 @@ int main(int argc, char **argv)
             ui.menu = 1; ui.menu_sel = MI_COLOR; ui.force = 1; frame();
             settings.palette = PAL_OP; theme_on = 0; palette_set(PAL_OP);
             encs[panel.enc[EN_K1]] = 1; frame();      /* no theme: the last (SNOOP 0.12: OP) -> GREEN, as ever */
-            ok = settings.palette == 0u && !theme_on && !op_look && F_S == &FONT_S;
+            ok = settings.palette == 0u && !theme_on && !op_look;
             settings.palette = 4; palette_set(4);
             theme = th; theme_valid = 1;
             encs[panel.enc[EN_K1]] = 1; frame();      /* MONO -> OP (SNOOP 0.12: the OP look) */
-            ok &= !theme_on && settings.palette == PAL_OP && op_look && F_S == &FONT_ISC && TE_COL[1] == OP_ORANGE;
+            ok &= !theme_on && settings.palette == PAL_OP && op_look && TE_COL[1] == OP_ORANGE;
             ui.force = 1; frame(); ppm("menu-op");
             encs[panel.enc[EN_K1]] = 1; frame();      /* OP -> SUNSET */
-            ok &= theme_on && settings.palette == PAL_OP && !op_look && F_S == &FONT_S && pal[0] == th.c[0] && pal[4] == th.c[4] && C_BLACK == th.bg &&
+            ok &= theme_on && settings.palette == PAL_OP && !op_look && pal[0] == th.c[0] && pal[4] == th.c[4] && C_BLACK == th.bg &&
                   TE_COL[0] == th.trk[0] && TE_COL[3] == th.trk[3] && TE_MID[1] == rgb565_scale(th.trk[1], 2, 3) &&
                   (lights_word() >> 30 & 1u) && !strcmp(mi_value(MI_COLOR, &(uint16_t){0}), "SUNSET") && C_WHITE == th.hi;
             ui.force = 1; frame(); ppm("menu-theme");

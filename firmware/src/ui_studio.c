@@ -392,7 +392,7 @@ UI_SMALL static void drum_screen_draw(void)
         cv_text(19 - text_w(F_S, b) / 2, 13, F_S, b, C_BLACK);
         cv_text(44, 6, F_L, DRUM_KIT_NAMES[kit], C_WHITE);
         {
-            int32_t lx = op_look ? 236 - text_w(F_S, "sound") : 194;   /* (0.12: Inter's "sound" is wider) */
+            int32_t lx = 236 - text_w(F_S, "sound");   /* (0.12: Inter: as wide as "sound") */
             cv_text(lx, 1, F_S, "grid", drum_page == 0 ? C_WHITE : TE_G3);
             cv_text(lx, 15, F_S, "kit", drum_page == 1 ? C_WHITE : TE_G3);
             cv_text(lx, 29, F_S, "sound", drum_page == 2 ? C_WHITE : TE_G3);
@@ -822,6 +822,9 @@ UI_SMALL static void rec_rows(uint32_t rt, uint32_t take, uint32_t y0, uint32_t 
         if (is_drum(&trk[i])) str_cpy(b, DRUM_KIT_NAMES[drum_kit()], sizeof b);
         else trk_short_name(i, b);
         b[10] = 0;
+        for (j = str_len(b); j && text_w(F_S, b) > 80; )   /* (0.12: Inter's widths vary: cut to the space before the
+                                                         * steps) */
+            b[--j] = 0;
         cv_text(22, y + 1, F_S, b, armed ? C_WHITE : TE_G3);
         for (j = 0; j < 16u; j++) {
             uint32_t a = j * len / 16u, z = (j + 1u) * len / 16u, k, on = 0;

@@ -70,9 +70,11 @@ static const palette_t PALETTES[] = {
     {"OP", {RGB(44, 44, 54), RGB(72, 72, 88), RGB(124, 124, 140), RGB(190, 190, 202), RGB(236, 236, 242)}},
 };
 #define PAL_OP 5u
-/* SNOOP 0.12: the screens' fonts, as the palette says: Terminus (S, L), or Inter in the OP look (text IS, as given;
- * titles and large values IB; F_LB the labels, Inter's in lower case) */
-static const felucca_font_t *F_S = &FONT_S, *F_L = &FONT_L, *F_LB = &FONT_S;
+/* SNOOP 0.12: the screens' fonts, Inter in every palette (Terminus no more: 5.6 KB of flash): text F_S (IS, the case
+ * as given), titles and large values F_L (IB, capitals), F_LB the OP look's labels (IS in lower case) */
+#define F_S (&FONT_ISC)
+#define F_L (&FONT_IB)
+#define F_LB (&FONT_IS)
 static uint8_t op_look;                          /* the OP look is on (palette_set) */
 #define NPALETTES (sizeof(PALETTES) / sizeof(PALETTES[0]))
 static uint16_t pal[5];
@@ -192,9 +194,6 @@ static void palette_set(uint32_t i)              /* built-in palette i, or the t
     uint32_t k;
     int cu = theme_shown();
     op_look = (uint8_t)(!cu && i % NPALETTES == PAL_OP);
-    F_S = op_look ? &FONT_ISC : &FONT_S;
-    F_L = op_look ? &FONT_IB : &FONT_L;
-    F_LB = op_look ? &FONT_IS : &FONT_S;
     for (k = 0; k < 5u; k++)
         pal[k] = cu ? theme.c[k] : PALETTES[i % NPALETTES].c[k];
     pal_bg = cu ? theme.bg : 0u;

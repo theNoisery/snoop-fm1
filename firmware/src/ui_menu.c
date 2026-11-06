@@ -143,28 +143,28 @@ UI_SMALL static void draw_menu(void)
             }
             cv_text(4, 36, F_S, "THE NOISERY", C_HI);
             cv_text(236 - text_w(F_S, FELUCCA_VERSION), 36, F_S, FELUCCA_VERSION, C_HI);
-            cv_text(4, 54, F_S, "SLOOP + FELUCCA", C_AMB);
-            cv_text(236 - text_w(F_S, __DATE__), 54, F_S, __DATE__, C_GRAY);   /* build date */
-            cv_text(cv_text(4, 72, F_S, "LEO KUROSHITA", C_HI) + 8, 72, F_S, "@KUROGEDELIC", C_AMB);
-            cv_text(4, 88, F_S, "H\xDCGELTON INSTRUMENTS", C_HI);   /* Latin-1 U-umlaut */
-            cv_text(4, 104, F_S, "HUGELTON.COM", C_AMB);
+            cv_text(4, 52, F_S, "SLOOP + FELUCCA", C_AMB);
+            cv_text(236 - text_w(F_S, __DATE__), 52, F_S, __DATE__, C_GRAY);   /* build date */
+            cv_text(cv_text(4, 68, F_S, "LEO KUROSHITA", C_HI) + 8, 68, F_S, "@KUROGEDELIC", C_AMB);
+            cv_text(4, 84, F_S, "H\xDCGELTON INSTRUMENTS", C_HI);   /* Latin-1 U-umlaut */
+            cv_text(4, 100, F_S, "HUGELTON.COM", C_AMB);
 #if FELUCCA_CPU1
             {
                 char sv[12];
                 cpu1_supplies(sv);                  /* (2.7) SYSVDD, VDC14 now: 1.38V 1.60V (fm1_sys.h) */
-                cv_text(236 - text_w(F_S, sv), 104, F_S, sv, C_GRAY);
+                cv_text(236 - text_w(F_S, sv), 100, F_S, sv, C_GRAY);
             }
 #endif
-            cv_text(4, 119, F_S, "GPL-3.0, NO WARRANTY", C_HI);
+            cv_text(4, 116, F_S, "GPL-3.0, NO WARRANTY", C_HI);
 #if FELUCCA_CPU1                                    /* (the host tests include this file without cpu1.c) */
-            cv_text(236 - text_w(F_S, cpu1_label()), 119, F_S, cpu1_label(), C_AMB);   /* 2 CORES / 1 CORE (cpu1.c) */
+            cv_text(236 - text_w(F_S, cpu1_label()), 116, F_S, cpu1_label(), C_AMB);   /* 2 CORES / 1 CORE (cpu1.c) */
 #endif
             cv_text(4, 132, F_S, "GITHUB.COM/THENOISERY", C_AMB);   /* (the source of this firmware) */
-            cv_text(4, 146, F_S, "FONTS: TERMINUS, INTER (OFL)", C_DIM);
-            cv_text(4, 159, F_S, "SAMPLES: VERSILIAN (CC0)", C_DIM);
-            cv_text(4, 172, F_S, "+ SONIC PI (CC0)", C_DIM);
-            cv_text(4, 185, F_S, "PHASE: CRISPYZEBRA (GPL)", C_DIM);
-            cv_text(4, 198, F_S, "VOICE: REF. KLATTSCH (MIT)", C_DIM);
+            cv_text(4, 150, F_S, "FONT: INTER (OFL)", C_DIM);
+            cv_text(4, 164, F_S, "SAMPLES: VERSILIAN (CC0)", C_DIM);
+            cv_text(4, 178, F_S, "+ SONIC PI (CC0)", C_DIM);
+            cv_text(4, 192, F_S, "PHASE: CRISPYZEBRA (GPL)", C_DIM);
+            cv_text(4, 206, F_S, "VOICE: REF. KLATTSCH (MIT)", C_DIM);
         } else {
             int32_t x = 4;
             for (i = 0; i < MS_COUNT; i++) {        /* the sections as tabs: this one lit */

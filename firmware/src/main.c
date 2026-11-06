@@ -134,19 +134,19 @@ UI_SMALL static void fm1_fault(const fm1_crash_t *c)
         fm1_cpu1_bar();                                 /* core until power-off (a misread on core 0 can't be caught) */
     fm1_audio_stop();
     lcd_fill(0, 0, 240, 240, RGB(160, 0, 0));
-    draw_text_box(0, 8, 240, &FONT_S, "FELUCCA CRASH", C_WHITE, 1);
+    draw_text_box(0, 8, 240, &FONT_ISC, "FELUCCA CRASH", C_WHITE, 1);
     hexs(b, c->vec);
-    draw_text_box(10, 40, 220, &FONT_S, b, C_WHITE, 0);
+    draw_text_box(10, 40, 220, &FONT_ISC, b, C_WHITE, 0);
     hexs(b, c->pc);
-    draw_text_box(10, 60, 220, &FONT_S, b, C_WHITE, 0);
+    draw_text_box(10, 60, 220, &FONT_ISC, b, C_WHITE, 0);
     hexs(b, c->emu);
-    draw_text_box(10, 84, 220, &FONT_S, b, C_WHITE, 0);
+    draw_text_box(10, 84, 220, &FONT_ISC, b, C_WHITE, 0);
     hexs(b, c->dbg);
-    draw_text_box(10, 102, 220, &FONT_S, b, C_WHITE, 0);
+    draw_text_box(10, 102, 220, &FONT_ISC, b, C_WHITE, 0);
     hexs(b, c->rets);
-    draw_text_box(10, 120, 220, &FONT_S, b, C_WHITE, 0);
+    draw_text_box(10, 120, 220, &FONT_ISC, b, C_WHITE, 0);
     hexs(b, c->sp);                                     /* (2.7.1) more to read on a photo of it: the stack, */
-    draw_text_box(10, 144, 220, &FONT_S, b, C_WHITE, 0);
+    draw_text_box(10, 144, 220, &FONT_ISC, b, C_WHITE, 0);
     {                                                   /* the second core (state 3 = running, how many late jobs) */
         char t[28];
         str_cpy(t, "C1 ", sizeof t);
@@ -155,7 +155,7 @@ UI_SMALL static void fm1_fault(const fm1_crash_t *c)
         fmt_int(t + str_len(t), (int32_t)(cpu1_timeouts > 99u ? 99u : cpu1_timeouts));
         str_cpy(t + str_len(t), " BAD ", 6);           /* (2.8.3) jobs core 1 read wrong and refused (fm1_cpu1.h) */
         fmt_int(t + str_len(t), (int32_t)(fm1_c1_mb.bad > 99u ? 99u : fm1_c1_mb.bad));
-        draw_text_box(10, 162, 220, &FONT_S, t, C_WHITE, 0);
+        draw_text_box(10, 162, 220, &FONT_ISC, t, C_WHITE, 0);
     }
     t0 = fm1_ticks();
     while ((uint32_t)(fm1_ticks() - t0) < 10000u * 1000u * FM1_TICKS_PER_US)   /* (2.7.1: 10 s, time for a photo) */
@@ -306,7 +306,7 @@ UI_SMALL static void fm1_main(void)
                 persist_flush_now();                    /* (live sections, song, project: RAM-only so far) */
 #endif
                 lcd_fill(0, 0, 240, 240, C_BLACK);
-                draw_text_box(0, 110, 240, &FONT_S, "UBOOT", RGB(80, 120, 255), 1);
+                draw_text_box(0, 110, 240, &FONT_ISC, "UBOOT", RGB(80, 120, 255), 1);
                 usb_detach();
                 fm1_delay_ms(30);
                 bootguard.pending = 0;                  /* intentional reset: not a failed boot */
@@ -334,7 +334,7 @@ UI_SMALL static void fm1_main(void)
             persist_flush_now();                    /* (live sections, song, project: RAM-only so far) */
 #endif
             lcd_fill(0, 0, 240, 240, C_BLACK);
-            draw_text_box(0, 110, 240, &FONT_S, "UBOOT (USB)", C_WHITE, 1);
+            draw_text_box(0, 110, 240, &FONT_ISC, "UBOOT (USB)", C_WHITE, 1);
             fm1_delay_ms(20);
             usb_detach();
             fm1_delay_ms(30);

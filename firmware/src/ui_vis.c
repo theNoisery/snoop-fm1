@@ -819,7 +819,7 @@ static void vis_transport(void)
     char b[12];
     uint32_t i, beat = song.playing ? clk_beat : 0u, six = song.playing ? beat % 4u * 4u + clk_pos * 4u / BEAT_U : 99u;
     fmt_int(b, song.g[G_BPM]);
-    vtext_c(120, 92, 66, b, 600, OP_LAV);           /* (0.12: Inter, 66 px; it was 92) */
+    vtext_c(120, 92, 66, b, 600, OP_WHITE);         /* (0.12: Inter, 66 px, white; it was 92, lavender) */
     vtext_c(120, 172, 10, "BPM", 260, OP_GREY);
     fmt_int(b, (int32_t)(beat / 4u + 1u));
     i = str_len(b);
@@ -941,7 +941,7 @@ static void vis_draw(void)
             const char *s = ui.msg_t ? ui.msg : VIS_NAME[vis_style % VIS_N];
             cv_rect(0, 0, 240, 44, OP_BG);
             if (ui.msg_t) {
-                cv_text(120 - text_w(&FONT_S, s) / 2, 14, &FONT_S, s, C_WHITE);
+                cv_text(120 - text_w(&FONT_ISC, s) / 2, 14, &FONT_ISC, s, C_WHITE);
             } else {
                 vtext_c(120, 16, 14, s, 330, OP_WHITE);
                 fmt_int(n, (int32_t)(vis_style % VIS_N) + 1);

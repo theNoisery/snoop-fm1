@@ -12,13 +12,13 @@
 UI_SMALL static void sloop_logo_draw(uint32_t y0)
 {
     static const char L[5] = {'S', 'L', 'O', 'O', 'P'};
-    uint32_t i, w = text_w(&FONT_L, "SLOOP"), k = w * 3u <= 232u ? 3u : 2u, h = 32u, off, y, x;
+    uint32_t i, w = text_w(&FONT_IB, "SLOOP"), k = w * 3u <= 232u ? 3u : 2u, h = 32u, off, y, x;
     int32_t px = 0;
     char c[2] = {0, 0};
     cv_begin(240, h * k, C_BLACK);
     for (i = 0; i < 5u; i++) {                          /* small, at the top left: S white, L O O P the tracks' colours */
         c[0] = L[i];
-        px = cv_text(px, 0, &FONT_L, c, i ? TE_COL_DEF[i - 1u] : C_WHITE);
+        px = cv_text(px, 0, &FONT_IB, c, i ? TE_COL_DEF[i - 1u] : C_WHITE);
     }
     off = (240u - w * k) / 2u;
     for (y = h * k; y-- > 0;)                           /* then k times as big, in place (from the end: nothing read is
@@ -57,7 +57,7 @@ UI_SMALL static void sloop_splash(void)
     lcd_fill(0, 0, 240, 240, C_BLACK);
     sloop_logo_draw(4);
     cv_begin(240, 44, C_BLACK);
-    cv_text(120 - text_w(&FONT_S, FELUCCA_VERSION) / 2, 0, &FONT_S, FELUCCA_VERSION, RGB(220, 220, 228));
-    cv_text(120 - text_w(&FONT_S, "sloop + felucca") / 2, 20, &FONT_S, "sloop + felucca", RGB(96, 96, 104));
+    cv_text(120 - text_w(&FONT_ISC, FELUCCA_VERSION) / 2, 0, &FONT_ISC, FELUCCA_VERSION, RGB(220, 220, 228));
+    cv_text(120 - text_w(&FONT_ISC, "sloop + felucca") / 2, 20, &FONT_ISC, "sloop + felucca", RGB(96, 96, 104));
     cv_blit(0, 194);
 }
