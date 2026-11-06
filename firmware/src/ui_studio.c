@@ -67,24 +67,6 @@ UI_SMALL static void te_rrect(int32_t x, int32_t y, int32_t w, int32_t h, int32_
     if (ring)
         te_rrect(x + ring, y + ring, w - 2 * ring, h - 2 * ring, r > ring ? r - ring : 1, 0, C_BLACK);
 }
-/* a dial: a 270-degree ring (lit up to the value), a pointer; ratio 0..1000, -1 = a plain ring */
-UI_SMALL static void te_dial(int32_t cx, int32_t cy, int32_t r, int32_t ratio, uint16_t c, uint16_t dim)
-{
-    int32_t i, end = ratio < 0 ? 768 : ratio * 768 / 1000;
-    for (i = 0; i <= 768; i += 8) {
-        uint32_t a = (uint32_t)(384 + i) & 1023u;
-        int32_t co = SINE[(a + 256u) & 1023u], si = SINE[a], k;
-        uint16_t col = ratio < 0 || i <= end ? c : dim;
-        for (k = r - 2; k <= r; k++)
-            cv_pset(cx + ((co * k) >> 15), cy + ((si * k) >> 15), col);
-    }
-    if (ratio >= 0) {
-        uint32_t a = (uint32_t)(384 + end) & 1023u;
-        int32_t co = SINE[(a + 256u) & 1023u], si = SINE[a];
-        cv_line(cx, cy, cx + ((co * (r - 4)) >> 15), cy + ((si * (r - 4)) >> 15), C_WHITE);
-        te_disc(cx, cy, 2, C_WHITE);
-    }
-}
 UI_SMALL static void te_play_icon(int32_t x, int32_t y, int playing)
 {
     int32_t i;
@@ -122,30 +104,33 @@ UI_SMALL static void te_dials(int32_t y0, const char *const lab[4], const char *
     if (!ui.force && sig == *cache)
         return;
     *cache = sig;
-    cv_begin(240, 240u - (uint32_t)y0, C_BLACK);
+    cv_begin(240, ui.msg_t ? 240u - (uint32_t)y0 : 40u, C_BLACK);
     if (ui.msg_t) {                                     /* a message: a white bar */
         cv_rect(0, 10, 240, 32, C_WHITE);
         cv_text((240 - text_w(F_S, ui.msg)) / 2, 18, F_S, ui.msg, C_BLACK);
         cv_blit(0, (uint32_t)y0);
         return;
     }
-    for (k = 0; k < 4u; k++) {                          /* (SNOOP 0.12) a column a knob: the label, the value (white
-                                                         * while turned), a thin line lit in the knob's colour up to
-                                                         * a white dot */
-        int32_t x = 4 + 60 * (int32_t)k, gy = 48 * 256 + 128, xb;
+    for (k = 0; k < 4u; k++) {
+        int32_t cx = 30 + 60 * (int32_t)k;
         if (!lab[k][0])
             continue;
-        cv_text(x, 0, F_S, lab[k], TE_G3);
-        cv_text(x, 17, &FONT_IV, val[k], ui.hot_t && ui.hot_col == k ? C_WHITE : TE_G4);
-        if (ratio[k] < 0)
-            continue;
-        xb = (x + 2) * 256 + clamp(ratio[k], 0, 1000) * 48 * 256 / 1000;
-        op_line((x + 2) * 256, gy, (x + 50) * 256, gy, 256, TE_G1);
-        if (xb > (x + 2) * 256 + 128)
-            op_line((x + 2) * 256, gy, xb, gy, 600, TE_COL[k]);
-        op_round(xb, gy, 3 * 256, 0, C_WHITE);
+        if (ratio[k] >= 0) {                            /* (SNOOP 0.12) a thin ring in the knob's colour, a white
+                                                         * dot inside it turned with the value (a 270-degree sweep,
+                                                         * as the visualiser's) */
+            uint32_t a = (uint32_t)(384 + clamp(ratio[k], 0, 1000) * 768 / 1000) & 1023u;
+            op_round(cx * 256, 12 * 256 + 128, 10 * 256, 300, TE_COL[k]);
+            op_round(cx * 256 + ((SINE[(a + 256u) & 1023u] * 6) >> 7), 12 * 256 + 128 + ((SINE[a] * 6) >> 7),
+                     2 * 256 + 64, 0, C_WHITE);
+        } else
+            op_round(cx * 256, 12 * 256 + 128, 10 * 256, 300, TE_DIM[k]);
+        te_text_c(cx, 24, lab[k], TE_G3);
     }
     cv_blit(0, (uint32_t)y0);
+    cv_begin(240, 16, C_BLACK);                         /* the values: white while turned */
+    for (k = 0; k < 4u; k++)
+        te_text_c(30 + 60 * (int32_t)k, 0, val[k], ui.hot_t && ui.hot_col == k ? C_WHITE : TE_G4);
+    cv_blit(0, (uint32_t)y0 + 40u);
 }
 
 UI_SMALL static void studio_open(uint32_t scope)
