@@ -6,6 +6,16 @@ static void draw_menu(void);
 static uint32_t str_hash(uint32_t h, const char *s);
 
 /* --------------------------------------------------------- drawing --- */
+/* SNOOP 0.12: the OP look draws its curves and bars anti-aliased (ui_vis.c, 1/256 px) */
+/* a graph's line: in the OP look anti-aliased (on the pixels' centres, 1.5 px; the segments' ends add up), else as ever */
+UI_SMALL static void gline(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c)
+{
+    if (op_look) {
+        op_line(x0 * 256 + 128, y0 * 256 + 128, x1 * 256 + 128, y1 * 256 + 128, 300, c);
+    } else {
+        cv_line(x0, y0, x1, y1, c);
+    }
+}
 UI_SMALL static int is_eng_name(const char *s)                 /* one of the ENGINES[]->name strings */
 {
     uint32_t e;
@@ -161,6 +171,24 @@ UI_SMALL static void draw_column(uint32_t c, const char *label, const char *val,
         return;
     str_cpy(ui.col[c], key, sizeof ui.col[c]);
     cv_begin(55, Y_SEP_END - Y_LABEL, C_BLACK);         /* x 4..58: the rule at 59 stays */
+    if (op_look) {                                      /* SNOOP 0.12, the OP look: the label small and grey (lower
+                                                         * case), the value white, under it a thin line in the knob's
+                                                         * colour as far as the value, a white dot at its end */
+        char lo[12];
+        fit(lo, label, F_LB, 52);
+        cv_text(1, 0, F_LB, lo, C_GRAY);
+        x = cv_text(1, Y_VALUE - Y_LABEL - 1, &FONT_IV, v, vc == C_DIM ? C_DIM : vc == C_WHITE ? TE_COL[c & 3u] : C_HI);
+        cv_text(x + 2, Y_VALUE - Y_LABEL, F_LB, u, C_GRAY);
+        if (ratio >= 0) {
+            int32_t gy = (Y_GAUGE - Y_LABEL) * 256 + 128, xb = 2 * 256 + ratio * 48 * 256 / 1000;
+            op_line(2 * 256, gy, 50 * 256, gy, 256, C_LINE);
+            if (vc != C_DIM && xb > 2 * 256 + 128)
+                op_line(2 * 256, gy, xb, gy, 520, TE_COL[c & 3u]);
+            op_round(xb, gy, 2 * 256 + 64, 0, vc == C_DIM ? C_DIM : C_HI);
+        }
+        cv_blit(c * 60u + 4u, Y_LABEL);
+        return;
+    }
     if (FELUCCA_ICONS && icon != ICON_NONE && l[0])
         cv_icon(0, 1, icon, TE_COL[c & 3u]);            /* icon rows 1..10 = the label's cap height */
     cv_text(l[0] ? LABEL_X : 0, 0, F_S, l, C_GRAY);
@@ -186,24 +214,26 @@ UI_SMALL static void graph_adsr(const track_t *t, uint16_t c)
     int32_t x0 = 6, x1 = x0 + a, x3 = 232 - r, i, px, py;
     int32_t e = 32768;                                                  /* exp(-4.6 u), Q15 */
 #define EGY(lvl) (bot - (lvl) * (bot - top) / 1000)
-    cv_line(x0, bot, x1, top, c);                                       /* attack: linear */
+    uint16_t ca = op_look ? TE_COL[0] : c, cd = op_look ? TE_COL[1] : c, cs = op_look ? TE_COL[2] : c,
+             cr = op_look ? TE_COL[3] : c;                              /* (the OP look: each its knob's colour) */
+    gline(x0, bot, x1, top, ca);                                        /* attack: linear */
     px = x1;
     py = top;
     for (i = 1; i <= d; i++) {                                          /* decay: exponential to SUS */
         int32_t lvl;
         e = (e * (32768 - 150733 / d)) >> 15;           /* k^d = exp(-4.6) */
         lvl = sus + ((1000 - sus) * e >> 15);
-        cv_line(px, py, x1 + i, EGY(lvl), c);
+        gline(px, py, x1 + i, EGY(lvl), cd);
         px = x1 + i;
         py = EGY(lvl);
     }
-    cv_line(px, py, x3, EGY(sus), c);                                    /* sustain */
+    gline(px, py, x3, EGY(sus), cs);                                    /* sustain */
     px = x3;
     py = EGY(sus);
     e = 32768;
     for (i = 1; i <= r; i++) {                                          /* release: exponential to 0 */
         e = (e * (32768 - 150733 / r)) >> 15;
-        cv_line(px, py, x3 + i, EGY(sus * e >> 15), c);
+        gline(px, py, x3 + i, EGY(sus * e >> 15), cr);
         px = x3 + i;
         py = EGY(sus * e >> 15);
     }
@@ -220,7 +250,7 @@ UI_SMALL static void graph_lfo(const track_t *t, uint16_t c)
         if (t->p[P_LWAVE] == 4)
             y = 50 - ((int32_t)((x / 20 * 2654435761u) >> 16) - 32768) * 38 / 32768;
         if (x)
-            cv_line(x - 1, py, x, y, c);
+            gline(x - 1, py, x, y, c);
         py = y;
     }
     cv_line(0, 50, 239, 50, C_LINE);
@@ -703,7 +733,7 @@ UI_SMALL static void graph_scope(uint16_t c)
     for (x = 0; x < 240; x++) {
         int32_t y = 50 - snap[trig + (uint32_t)x] * 44 / peak;   /* auto-scaled */
         if (x)
-            cv_line(x - 1, py, x, y, c);
+            gline(x - 1, py, x, y, c);
         py = y;
     }
 }
@@ -728,7 +758,12 @@ UI_SMALL static void graph_big(void)
             x0 = (240 - text_w(F_L, ui.big_v[c]) - (ui.big_u[c][0] ? text_w(F_S, ui.big_u[c]) + 4 : 0)) / 2;
             y0 = 30;
         }
-        cv_text(x0, y0 + 2, F_S, ui.big_l[c], TE_COL[c & 3u]);
+        if (op_look) {                                  /* (the label as the columns': lower case, grey; a dot in
+                                                         * the knob's colour) */
+            op_round(x0 * 256 + 768, (y0 + 10) * 256, 3 * 256, 0, TE_COL[c & 3u]);
+            cv_text(x0 + 9, y0 + 2, F_LB, ui.big_l[c], C_GRAY);
+        } else
+            cv_text(x0, y0 + 2, F_S, ui.big_l[c], TE_COL[c & 3u]);
         x = cv_text(x0, y0 + 20, F_L, ui.big_v[c], ui.big_c[c] == C_DIM ? C_DIM : ui.big_c[c] == C_WHITE ? C_WHITE : C_HI);
         if (ui.big_u[c][0])
             cv_text(x + 4, y0 + 34, F_S, ui.big_u[c], C_GRAY);

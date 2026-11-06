@@ -34,8 +34,8 @@ UI_SMALL static void song_screen_draw(void)
     /* Draw one small band at a time: never exceed the 124-row canvas. */
     cv_begin(240, 40, C_BLACK);
     cv_text(4, 4, F_L, "SONG", C_WHITE);
-    cv_text(76, 20, F_S, arrangement_enabled ? "song mode" : "loop mode", arrangement_enabled ? SC[3] : TE_G3);
-    cv_text(76, 4, F_S, ARR_SYNC_LOOP(&arrangement) ? "sync loop" : "sync bar",   /* (SNOOP) PRESETS */
+    cv_text(12 + text_w(F_L, "SONG"), 20, F_S, arrangement_enabled ? "song mode" : "loop mode", arrangement_enabled ? SC[3] : TE_G3);
+    cv_text(12 + text_w(F_L, "SONG"), 4, F_S, ARR_SYNC_LOOP(&arrangement) ? "sync loop" : "sync bar",   /* (SNOOP) PRESETS */
             ARR_SYNC_LOOP(&arrangement) ? SC[2] : TE_G3);
     fmt_int(b, song.g[G_BPM]);
     cv_text(236 - text_w(F_S, b) - 28, 4, F_S, b, C_WHITE);

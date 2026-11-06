@@ -391,10 +391,13 @@ UI_SMALL static void drum_screen_draw(void)
         fmt_int(b, (int32_t)kit + 1);
         cv_text(19 - text_w(F_S, b) / 2, 13, F_S, b, C_BLACK);
         cv_text(44, 6, F_L, DRUM_KIT_NAMES[kit], C_WHITE);
-        cv_text(194, 1, F_S, "grid", drum_page == 0 ? C_WHITE : TE_G3);
-        cv_text(194, 15, F_S, "kit", drum_page == 1 ? C_WHITE : TE_G3);
-        cv_text(194, 29, F_S, "sound", drum_page == 2 ? C_WHITE : TE_G3);
-        cv_rect(188, 5 + (int32_t)drum_page * 14, 3, 9, TE_DRUM);
+        {
+            int32_t lx = op_look ? 236 - text_w(F_S, "sound") : 194;   /* (0.12: Inter's "sound" is wider) */
+            cv_text(lx, 1, F_S, "grid", drum_page == 0 ? C_WHITE : TE_G3);
+            cv_text(lx, 15, F_S, "kit", drum_page == 1 ? C_WHITE : TE_G3);
+            cv_text(lx, 29, F_S, "sound", drum_page == 2 ? C_WHITE : TE_G3);
+            cv_rect(lx - 6, 5 + (int32_t)drum_page * 14, 3, 9, TE_DRUM);
+        }
         cv_blit(0, 40);
     }
     sig = drum_page + drum_lane * 7u + drum_cursor * 101u + song.playing * 71u + len * 3u + ui.sheet * 7919u +
@@ -413,6 +416,37 @@ UI_SMALL static void drum_screen_draw(void)
         cv_begin(240, 100, C_BLACK);
         if (!drum_page) {                              /* GRID: the 16 lanes x 16 steps of this bank */
             int32_t lp = ui.sheet ? 5 : 6, ch = lp - 1;   /* (2.8.1) the lanes squeeze up to free the bottom for the sheet bar */
+            if (op_look) {                             /* SNOOP 0.12, the OP look: a dot a hit (SOFT small, HARD ringed,
+                                                        * a ratchet a white centre), empty steps faint points (the beats
+                                                        * brighter), the play head a line, the cursor a white ring */
+                for (j = 0; j < 16u; j++) {
+                    uint32_t p = bank * 16u + j;
+                    int32_t cx = (18 + (int32_t)j * 14) * 256;
+                    if (p >= len)
+                        continue;
+                    if (song.playing && p == TDRUM->seq_idx)
+                        op_line(cx, 0, cx, (DRUM_LANES * lp) * 256, 256, TE_G3);
+                    for (i = 0; i < DRUM_LANES; i++) {
+                        const dstep_t *s = &TDRUM->dstep[p < NSTEP ? p : 0];
+                        int32_t cy = ((int32_t)i * lp + 2) * 256 + ch * 128;
+                        if (dstep_has(s, i)) {
+                            uint32_t lv = dstep_lvl(s, i);
+                            op_round(cx, cy, lv <= LV_SOFT ? 400 : 620, 0, i == drum_lane ? C_WHITE : TE_DRUM);
+                            if (lv == LV_HARD)
+                                op_round(cx, cy, 900, 180, TE_DRUM);
+                            if (dstep_rat(s, i))
+                                op_round(cx, cy, 200, 0, C_BLACK);
+                        } else {
+                            op_round(cx, cy, 160, 0, j % 4u ? TE_G2 : TE_G3);
+                        }
+                        if (p == drum_cursor && i == drum_lane)
+                            op_round(cx, cy, 950, 200, C_WHITE);
+                    }
+                }
+                for (i = 0; i < DRUM_LANES; i++)        /* the lanes: a dot each, lit on a hit, the one picked red */
+                    op_round(5 * 256, ((int32_t)i * lp + 2) * 256 + ch * 128, 380, 0,
+                             pad_lit[i] ? C_WHITE : i == drum_lane ? TE_DRUM : TE_G2);
+            } else
             for (i = 0; i < DRUM_LANES; i++) {
                 int32_t y = (int32_t)i * lp + 2;
                 cv_rect(2, y, 6, ch, pad_lit[i] ? C_WHITE : i == drum_lane ? TE_DRUM : TE_G2);

@@ -160,7 +160,7 @@ UI_SMALL static void draw_menu(void)
             cv_text(236 - text_w(F_S, cpu1_label()), 119, F_S, cpu1_label(), C_AMB);   /* 2 CORES / 1 CORE (cpu1.c) */
 #endif
             cv_text(4, 132, F_S, "GITHUB.COM/THENOISERY", C_AMB);   /* (the source of this firmware) */
-            cv_text(4, 146, F_S, "FONT: TERMINUS (OFL)", C_DIM);
+            cv_text(4, 146, F_S, "FONTS: TERMINUS, INTER (OFL)", C_DIM);
             cv_text(4, 159, F_S, "SAMPLES: VERSILIAN (CC0)", C_DIM);
             cv_text(4, 172, F_S, "+ SONIC PI (CC0)", C_DIM);
             cv_text(4, 185, F_S, "PHASE: CRISPYZEBRA (GPL)", C_DIM);

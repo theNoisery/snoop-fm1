@@ -33,6 +33,9 @@ static uint8_t sync_reload;                  /* engine / preset / project / user
 #define RATIO(d, v) ((d)->max > (d)->min ? ((int32_t)(v) - (d)->min) * 1000 / ((d)->max - (d)->min) : -1)
 /* layout: four 60 px columns, 4 px inset */
 /* Terminus 8x16 (S) and 16x32 (L) */
+/* SNOOP 0.12: the OP look draws anti-aliased (ui_vis.c, in 1/256 px) */
+static void op_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t w, uint16_t c);
+static void op_round(int32_t cx, int32_t cy, int32_t r, int32_t w, uint16_t c);
 #define Y_HEAD 0
 #define H_HEAD 20
 #define Y_LABEL 26
