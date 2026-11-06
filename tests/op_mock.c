@@ -6,7 +6,9 @@
 #include "ui_pages_test.c"
 
 #define OPW(w) ((int32_t)((w) * 256))                   /* a width in px, 1/256 */
-static const uint16_t KCOL[4] = {OP_BLUE, OP_GREEN, OP_WHITE, OP_RED};   /* the OP-1's four encoders */
+static uint16_t PC[4] = {OP_BLUE, OP_GREEN, OP_WHITE, OP_RED};   /* the scheme: track i's colour, knob k's colour */
+#define KCOL PC
+#define REC_RED RGB(246, 52, 84)
 
 static void ntext(int32_t x, int32_t y, const char *s, uint16_t c) { cv_text(x, y, &FONT_N, s, c); }
 static int32_t ntext_w(const char *s) { return text_w(&FONT_N, s); }
@@ -55,7 +57,7 @@ static void op_dash(int32_t x, int32_t y0, int32_t y1, uint16_t c)
 static void op_badge(int32_t x, int32_t y, uint32_t i, int sel)
 {
     char b[2] = {(char)('1' + i), 0};
-    uint16_t c = OP_TRK[i];
+    uint16_t c = PC[i];
     if (sel) {
         op_rrect(x, y, 20, 20, 3, 0, c, 1);
         vtext_c(x + 10, y + 4, 12, b, OPW(1.5), OP_BG);
@@ -115,11 +117,11 @@ static void scr_tracks(void)
         int32_t w = vtext(10, 6, 24, b, OPW(1.8), OP_WHITE);
         ntext(14 + w, 13, "bpm", OP_GREY);
     }
-    op_line(PX(150), PX(10), PX(150), PX(24), OPW(1.6), OP_GREEN);   /* playing */
-    op_line(PX(150), PX(10), PX(162), PX(17), OPW(1.6), OP_GREEN);
-    op_line(PX(162), PX(17), PX(150), PX(24), OPW(1.6), OP_GREEN);
+    op_line(PX(150), PX(10), PX(150), PX(24), OPW(1.6), PC[1]);   /* playing */
+    op_line(PX(150), PX(10), PX(162), PX(17), OPW(1.6), PC[1]);
+    op_line(PX(162), PX(17), PX(150), PX(24), OPW(1.6), PC[1]);
     vtext(170, 10, 14, "1.1", OPW(1.4), OP_WHITE);
-    op_disc(PX(222), PX(17), PX(6), OP_RED);
+    op_disc(PX(222), PX(17), PX(6), REC_RED);
     for (i = 0; i < NTRK; i++) {
         int32_t y = 38 + (int32_t)i * 38, len = trk[i].p[P_SLEN] > 0 ? trk[i].p[P_SLEN] : 16, at = (int32_t)(trk[i].seq_idx % (uint32_t)len);
         const engine_t *e = ENGINES[trk[i].engine];
@@ -140,7 +142,7 @@ static void scr_tracks(void)
             int on = vis_step_on(i, s % (uint32_t)len);
             if (s >= (uint32_t)len)
                 continue;
-            op_line(PX(xa), PX(y + 25), PX(xb), PX(y + 25), on ? OPW(3) : OPW(1.2), on ? OP_TRK[i] : OP_DARK);
+            op_line(PX(xa), PX(y + 25), PX(xb), PX(y + 25), on ? OPW(3) : OPW(1.2), on ? PC[i] : OP_DARK);
             if ((int32_t)s == at)
                 op_line(PX(xa + 4), PX(y + 19), PX(xa + 4), PX(y + 31), OPW(1.2), OP_WHITE);
         }
@@ -148,7 +150,7 @@ static void scr_tracks(void)
             int32_t lv = (int32_t)trk_level(i) * 1000 / 127;
             uint32_t a = 512u + (uint32_t)(lv * 512 / 1000);
             op_arc(PX(222), PX(y + 26), PX(10), 512, 1024, OPW(1.2), OP_DARK);
-            op_arc(PX(222), PX(y + 26), PX(10), 512, (int32_t)a, OPW(1.6), OP_TRK[i]);
+            op_arc(PX(222), PX(y + 26), PX(10), 512, (int32_t)a, OPW(1.6), PC[i]);
             op_line(PX(222), PX(y + 26), PX(222) + icos(a) * 12 / 128, PX(y + 26) + isin(a) * 12 / 128, OPW(1.4), OP_WHITE);
         }
     }
@@ -178,20 +180,20 @@ static void scr_env(void)
     op_dash(xa, top + 6, base, OP_TEAL);
     op_dash(xd, top + 6, base, OP_TEAL);
     op_dash(xs, top + 6, base, OP_TEAL);
-    op_line(PX(x0), PX(base), PX(xa), PX(top), OPW(1.8), OP_BLUE);
+    op_line(PX(x0), PX(base), PX(xa), PX(top), OPW(1.8), PC[0]);
     {                                                   /* the decay: exponential */
         int32_t k, px = PX(xa), py = PX(top);
         for (k = 1; k <= 40; k++) {
             double f = k / 40.0, y = top + (base - top) * (1.0 - exp(-4.0 * f)) / (1.0 - exp(-4.0));
             int32_t x = PX(xa) + (int32_t)((xd - xa) * f * 256), yy = (int32_t)(y * 256);
-            op_line(px, py, x, yy, OPW(1.8), OP_GREEN);
+            op_line(px, py, x, yy, OPW(1.8), PC[1]);
             px = x, py = yy;
         }
     }
-    op_line(PX(xd), PX(ys), PX(xs), PX(ys), OPW(1.8), OP_WHITE);
-    op_line(PX(xs), PX(ys), PX(xr), PX(base), OPW(1.8), OP_RED);
-    op_circle(PX(xa), PX(top), PX(5), OPW(1.4), OP_BLUE);
-    op_disc(PX(xa), PX(top), PX(2), OP_BLUE);
+    op_line(PX(xd), PX(ys), PX(xs), PX(ys), OPW(1.8), PC[2]);
+    op_line(PX(xs), PX(ys), PX(xr), PX(base), OPW(1.8), PC[3]);
+    op_circle(PX(xa), PX(top), PX(5), OPW(1.4), PC[0]);
+    op_disc(PX(xa), PX(top), PX(2), PC[0]);
     op_circle(PX(xd), PX(ys), PX(5), OPW(1.4), OP_WHITE);
     op_disc(PX(xd), PX(ys), PX(2), OP_WHITE);
     op_foot(0, "env 1/2");
@@ -210,7 +212,7 @@ static void scr_filter(void)
         double mag = 1.0 / sqrt((1 - w * w) * (1 - w * w) + (w / q) * (w / q));
         double db = 20 * log10(mag), y = 150 - db * 2.6;
         int32_t x = PX(x0) + k * 512, yy = (int32_t)((y < base ? y : base) * 256);
-        if (k) op_line(px, py, x, yy, OPW(1.8), OP_GREEN);
+        if (k) op_line(px, py, x, yy, OPW(1.8), PC[1]);
         px = x, py = yy;
         if (!fc && f >= c) fc = x;
     }
@@ -250,7 +252,7 @@ static void scr_notes(void)
             {
                 int32_t y = y1 - (n - lo) * (y1 - y0) / rows - (y1 - y0) / rows / 2;
                 int32_t xa = x0 + s * (x1 - x0) / 16 + 2, xb = x0 + (s + 2) * (x1 - x0) / 16 - 2;
-                op_line(PX(xa), PX(y), PX(xb), PX(y), OPW(4), OP_GREEN);
+                op_line(PX(xa), PX(y), PX(xb), PX(y), OPW(4), PC[1]);
                 op_disc(PX(xa), PX(y), PX(2) + 128, OP_WHITE);
             }
         }
@@ -280,8 +282,8 @@ static void scr_drums(void)
             const dstep_t *d = &TDRUM->dstep[s];
             if (dstep_has(d, SND[r])) {
                 uint32_t lv = dstep_lvl(d, SND[r]);
-                op_disc(PX(x), PX(y), lv == LV_SOFT ? PX(2) : PX(3) + 160, s == at ? OP_WHITE : OP_RED);
-                if (lv == LV_HARD) op_circle(PX(x), PX(y), PX(6), OPW(1.2), OP_RED);
+                op_disc(PX(x), PX(y), lv == LV_SOFT ? PX(2) : PX(3) + 160, s == at ? OP_WHITE : PC[3]);
+                if (lv == LV_HARD) op_circle(PX(x), PX(y), PX(6), OPW(1.2), PC[3]);
             } else {
                 op_disc(PX(x), PX(y), 200, s % 4u ? OP_DARK : OP_DIM);
             }
@@ -301,7 +303,7 @@ static void scr_roll(void)
     static const char *const P[16] = {"kick", "kick2", "snare", "clap", "hat", "open", "pedal", "rim",
                                       "snr2", "tom l", "tom h", "crash", "ride", "shake", "conga", "bell"};
     uint32_t i;
-    vtext(10, 8, 20, "ROLL", OPW(1.7), OP_RED);
+    vtext(10, 8, 20, "ROLL", OPW(1.7), PC[3]);
     ntext(80, 13, "+ key: roll", OP_GREY);
     op_line(PX(10), PX(36), PX(230), PX(36), OPW(1), OP_DARK);
     for (i = 0; i < 16u; i++) {
@@ -362,6 +364,28 @@ int main(int argc, char **argv)
     song.sel = 1;
     go_home(); frames(4);
     transport_req = 1; frames(37);
+    {   /* the schemes, on black: tracks / knobs 1..4 */
+        static const struct { const char *n; uint16_t c[4]; } SCH[] = {
+            {"op1", {RGB(84, 120, 246), RGB(22, 222, 140), RGB(236, 236, 242), RGB(246, 52, 84)}},
+            {"ocean", {RGB(80, 124, 255), RGB(60, 206, 232), RGB(196, 182, 255), RGB(255, 138, 92)}},
+            {"sunset", {RGB(255, 132, 56), RGB(255, 200, 70), RGB(255, 92, 140), RGB(166, 120, 255)}},
+            {"synthwave", {RGB(176, 106, 255), RGB(255, 78, 174), RGB(62, 216, 240), RGB(255, 210, 74)}},
+            {"ice", {RGB(236, 236, 242), RGB(150, 190, 255), RGB(110, 136, 255), RGB(255, 122, 46)}},
+        };
+        uint32_t q;
+        char nm[40];
+        for (q = 0; q < sizeof SCH / sizeof SCH[0]; q++) {
+            memcpy(PC, SCH[q].c, sizeof PC);
+            song.rec = 1, song.sel = 1;
+            snprintf(nm, sizeof nm, "sch-%s-tracks", SCH[q].n); shot(nm, scr_tracks);
+            song.rec = 0, song.sel = 0;
+            snprintf(nm, sizeof nm, "sch-%s-env", SCH[q].n); shot(nm, scr_env);
+            song.sel = 3;
+            snprintf(nm, sizeof nm, "sch-%s-drums", SCH[q].n); shot(nm, scr_drums);
+        }
+        memcpy(PC, SCH[0].c, sizeof PC);
+    }
+    song.sel = 1;
     song.rec = 1;
     shot("op-tracks", scr_tracks);
     song.rec = 0;

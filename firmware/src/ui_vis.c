@@ -114,6 +114,8 @@ static uint32_t vis_rand(void)
 }
 
 /* ---- drawing: anti-aliased, in 1/256 px (canvas coordinates; cv_oy picks the band) ---- */
+static uint8_t op_maxblend;                          /* (0.12) text: a pixel takes the most any stroke covers it, not
+                                                     * their sum (no brighter dots where strokes meet); on black */
 static void op_px(int32_t x, int32_t y, uint16_t c, int32_t a)        /* a pixel covered a/256 */
 {
     uint16_t *p;
@@ -121,6 +123,20 @@ static void op_px(int32_t x, int32_t y, uint16_t c, int32_t a)        /* a pixel
     if ((uint32_t)x >= cv_w || (uint32_t)y >= cv_h || a <= 0)
         return;
     p = &cv_px[(uint32_t)y * cv_w + (uint32_t)x];
+    if (op_maxblend && a < 256) {
+        uint32_t was = swap16(*p), cr = c >> 11, cg = (c >> 5) & 63u, cb = c & 31u, a0;
+        /* how much of c the pixel holds already: by c's strongest channel (in 6 bits) */
+        if (cg >= cr * 2u && cg >= cb * 2u)
+            a0 = cg ? ((was >> 5) & 63u) * 256u / cg : 0u;
+        else if (cr >= cb)
+            a0 = cr ? (was >> 11) * 256u / cr : 0u;
+        else
+            a0 = cb ? (was & 31u) * 256u / cb : 0u;
+        if ((uint32_t)a <= a0)
+            return;
+        *p = swap16(mix565(OP_BG, c, a));
+        return;
+    }
     *p = swap16(a >= 256 ? c : mix565(swap16(*p), c, a));
 }
 static int op_off_band(int32_t ylo, int32_t yhi)                    /* rows ylo..yhi (1/256 px) all off the band */
@@ -133,7 +149,8 @@ static void op_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t w, u
 {
     int32_t dx = x1 - x0, dy = y1 - y0, adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy, steep = ady > adx;
     int32_t u0, v0, u1, v1, du, slope, hw, i, i1;
-    w = w * 5 / 4;                                  /* (0.9.1: a little bolder, crisper on the FM-1) */
+    if (!op_maxblend)
+        w = w * 5 / 4;                              /* (0.9.1: a little bolder, crisper on the FM-1; text: as given) */
     if (op_off_band(y0 < y1 ? y0 - w : y1 - w, y0 > y1 ? y0 + w : y1 + w))
         return;
     if (steep)
@@ -323,9 +340,17 @@ static const int8_t *vglyph(uint32_t ch)
 }
 /* text, its top left at x, y (px), h px high, wide sx/sy of the grid's (256 = as high), strokes w (1/256 px);
  * returns its width (px) */
+/* (0.12) the glyphs' points on pixel centres: the same stroke falls the same way in every letter (even weight, even
+ * height; a little of a pixel font's look) */
+static int32_t vsnap_off = 128;                     /* 128: on pixel centres (1 px strokes); 0: on their edges (2 px) */
+#define VSNAP(v) (((v) & ~255) + vsnap_off)
 static int32_t vtext_sx(int32_t x, int32_t y, int32_t h, int32_t sx, const char *s, int32_t w, uint16_t c)
 {
     int32_t ky = h * 256 / 20, kx = ky * sx / 256, ox = PX(x), oy = PX(y);
+    w = h >= 36 ? 512 : 256;                        /* (0.12) whole pixels: 1, or 2 from 36 px up; crisp, the same
+                                                     * in every letter (the w asked for: no longer used) */
+    vsnap_off = h >= 36 ? 0 : 128;
+    op_maxblend = 1;
     for (; *s; s++) {
         const int8_t *g = vglyph((uint8_t)*s);
         int32_t adv = g[0], px = 0, py = 0, down = 0;
@@ -334,7 +359,7 @@ static int32_t vtext_sx(int32_t x, int32_t y, int32_t h, int32_t sx, const char 
             while (*g != VE) {
                 int32_t op = *g++;
                 if (op == VM || op == VL) {
-                    int32_t nx = ox + g[0] * kx, ny = oy + g[1] * ky;
+                    int32_t nx = VSNAP(ox + g[0] * kx), ny = VSNAP(oy + g[1] * ky);
                     g += 2;
                     if (op == VL && down)
                         op_line(px, py, nx, ny, w, c);
@@ -347,7 +372,7 @@ static int32_t vtext_sx(int32_t x, int32_t y, int32_t h, int32_t sx, const char 
                     if (n < 2) n = 2;
                     for (k = 0; k <= n; k++) {
                         uint32_t a = (uint32_t)(a0 + (a1 - a0) * k / n);
-                        int32_t nx = cx + ((icos(a) * (rx >> 4)) >> 11), ny = cy + ((isin(a) * (ry >> 4)) >> 11);
+                        int32_t nx = VSNAP(cx + ((icos(a) * (rx >> 4)) >> 11)), ny = VSNAP(cy + ((isin(a) * (ry >> 4)) >> 11));
                         if (down)
                             op_line(px, py, nx, ny, w, c);
                         px = nx, py = ny, down = 1;
@@ -355,12 +380,13 @@ static int32_t vtext_sx(int32_t x, int32_t y, int32_t h, int32_t sx, const char 
                 } else if (op == VN) {
                     down = 0;
                 } else if (op == VD) {
-                    op_disc(ox + g[0] * kx, oy + g[1] * ky, w * 3 / 4 + 64, c);
+                    op_disc(VSNAP(ox + g[0] * kx), VSNAP(oy + g[1] * ky), w * 3 / 4 + 64, c);
                     g += 2;
                 }
             }
         ox += adv * kx;
     }
+    op_maxblend = 0;
     return (ox - PX(x)) >> 8;
 }
 static int32_t vtext(int32_t x, int32_t y, int32_t h, const char *s, int32_t w, uint16_t c)
